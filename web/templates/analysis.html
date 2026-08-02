@@ -31,10 +31,10 @@
       margin-left: 6px;
       vertical-align: middle;
     }
-    .badge-warn { background: rgba(255,152,0,.15); color: #ff9800; border: 1px solid rgba(255,152,0,.3); }
-    .badge-p1 { background: rgba(233,69,96,.15); color: var(--accent-2); border: 1px solid rgba(233,69,96,.3); }
-    .badge-p2 { background: rgba(33,150,243,.15); color: #64b5f6; border: 1px solid rgba(33,150,243,.3); }
-    .badge-p3 { background: rgba(139,146,168,.15); color: var(--muted); border: 1px solid rgba(139,146,168,.3); }
+    .badge-pass { background: rgba(76,175,80,.15); color: var(--green); border: 1px solid rgba(76,175,80,.3); }
+    .badge-fail { background: rgba(244,67,54,.15); color: var(--red); border: 1px solid rgba(244,67,54,.3); }
+    .badge-mixed { background: rgba(255,152,0,.15); color: #ff9800; border: 1px solid rgba(255,152,0,.3); }
+    .badge-todo { background: rgba(33,150,243,.15); color: #64b5f6; border: 1px solid rgba(33,150,243,.3); }
     .reco-item {
       padding: 14px 16px;
       margin-bottom: 12px;
@@ -67,6 +67,17 @@
       line-height: 1.7;
       margin-bottom: 16px;
     }
+    .win-box {
+      padding: 12px 14px;
+      background: rgba(76,175,80,.08);
+      border: 1px solid rgba(76,175,80,.25);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #81c784;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+    .timeline-row { font-family: monospace; font-size: 12px; }
     .num-pos { color: var(--green); font-weight: 600; }
     .num-neg { color: var(--red); font-weight: 600; }
   </style>
@@ -75,7 +86,7 @@
   <div class="page-wrapper">
     <header class="page-header">
       <h1>🔬 动量策略分析</h1>
-      <p class="subtitle">经典动量策略对比与改进方向调研</p>
+      <p class="subtitle">经典动量策略对比 · Ablation 实测 · 回撤解剖</p>
     </header>
 
     <nav class="page-nav">
@@ -86,9 +97,6 @@
     <div class="card analysis-card">
       <div class="card-header"><h2>📚 经典动量轮动策略对比</h2></div>
       <div class="analysis-body">
-        <div class="note-box">
-          ⚠️ 数据说明：本次调研的联网交叉验证因 API 配额问题大面积失败，仅 GEM 一项有单来源抓取数据（未验证）。其余为策略文献中的公开规则（常识级），数字请自行复核。
-        </div>
         <table>
           <thead>
             <tr><th>策略</th><th>信号</th><th>调仓频率</th><th>持仓数</th><th>下跌保护</th></tr>
@@ -103,7 +111,7 @@
             </tr>
             <tr>
               <td><b>DAA</b> (Keller)</td>
-              <td>多资产 1/3/6/12月动量加权</td>
+              <td>13612W 多周期加权动量</td>
               <td>月频</td>
               <td>Top-3 等权</td>
               <td>按"坏资产"数量比例切防御资产</td>
@@ -131,87 +139,312 @@
             </tr>
           </tbody>
         </table>
-        <p>本策略本质上是 GEM 的<b>高频激进版</b>：日频替代月频、20日替代12个月、空仓替代切防御资产。</p>
+        <p>本策略本质上是 GEM 的<b>高频激进版</b>：日频替代月频、20日替代12个月、上证空仓替代逐标的绝对动量门。</p>
       </div>
     </div>
 
     <div class="card analysis-card">
-      <div class="card-header"><h2>📈 GEM 实测数据 <span class="badge badge-warn">单来源 · 未验证</span></h2></div>
+      <div class="card-header"><h2>🧪 Ablation 实测结果（2016-07 ~ 2026-07，十年，池：纳指/黄金/创业/5年国债）</h2></div>
       <div class="analysis-body">
+        <div class="win-box">
+          <b>最终结论：8 个改进开关测完，只有「空仓冷却」是正资产</b>——它来自真实回撤解剖，不是教科书标准件。<b>已以 3 天设为默认配置（2026-08-03 起生效）</b>：平时几乎无感（年化 -0.8pp），灾难时救命（问题区间收益 ×3、回撤 -23% → -18.6%）。
+        </div>
+        <table>
+          <thead>
+            <tr><th>开关</th><th>来源</th><th>实测结果（十年年化 vs 基线 41.72%）</th><th>判定</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>空仓冷却 3 天</b><br><small>上证空仓后N天禁再入场</small></td>
+              <td>2015-2017 回撤解剖</td>
+              <td>十年 <span class="num-pos">40.93%</span>（-0.8pp）<br>问题区间 6.59% → <span class="num-pos">20.35%</span>，回撤 -23.03% → <span class="num-pos">-18.61%</span></td>
+              <td><span class="badge badge-pass">已设为默认</span></td>
+            </tr>
+            <tr>
+              <td><b>空仓冷却 5 天</b></td>
+              <td>同上</td>
+              <td>十年 <span class="num-pos">40.82%</span>（-0.9pp），交易 292→263<br>问题区间 <span class="num-pos">19.92%</span>，回撤 <span class="num-pos">-18.61%</span></td>
+              <td><span class="badge badge-pass">可选</span></td>
+            </tr>
+            <tr>
+              <td><b>空仓冷却 10 天</b></td>
+              <td>同上</td>
+              <td>十年 <span class="num-neg">38.19%</span>（-3.5pp）；问题区间 <span class="num-pos">26.9%</span></td>
+              <td><span class="badge badge-mixed">偏长</span></td>
+            </tr>
+            <tr>
+              <td><b>绝对动量门</b><br><small>全池动量为负强制空仓</small></td>
+              <td>GEM / TSMOM</td>
+              <td>40.81%，回撤不变，交易 292→317</td>
+              <td><span class="badge badge-fail">无效</span></td>
+            </tr>
+            <tr>
+              <td><b>防御切换</b><br><small>空仓改持黄金/红利低波/国债</small></td>
+              <td>DAA / VAA</td>
+              <td>40.07%，Calmar 2.09→2.02</td>
+              <td><span class="badge badge-fail">无效</span></td>
+            </tr>
+            <tr>
+              <td><b>Sharpe 动量</b><br><small>排名 = 动量/波动率</small></td>
+              <td>VAA</td>
+              <td>含债券池 <span class="num-neg">22.64%</span>（国债低波动霸榜）<br>纯股票池 18.32% → <span class="num-neg">15.84%</span></td>
+              <td><span class="badge badge-fail">负优化</span></td>
+            </tr>
+            <tr>
+              <td><b>多周期动量</b><br><small>3×mom10+2×mom20+1×mom60</small></td>
+              <td>Keller 13612W</td>
+              <td><span class="num-neg">28.92%</span>，回撤 -26.14%，Calmar 1.11<br><small>mom60 滞后让日频轮动变慢</small></td>
+              <td><span class="badge badge-fail">负优化</span></td>
+            </tr>
+            <tr>
+              <td><b>FIP 动量质量</b><br><small>动量接近时选上涨路径平滑者</small></td>
+              <td>Da, Gurun &amp; Warachka</td>
+              <td><span class="num-neg">36.53%</span>（-5.2pp）</td>
+              <td><span class="badge badge-fail">负优化</span></td>
+            </tr>
+            <tr>
+              <td><b>豁免纳指黄金</b><br><small>上证空仓仅对A股标的生效</small></td>
+              <td>用户假设</td>
+              <td><span class="num-neg">35.73%</span>，回撤 <span class="num-neg">-27.8%</span><br><small>豁免后纳指/黄金失去 regime 保护，2022 纳指熊市拿满全程</small></td>
+              <td><span class="badge badge-fail">负优化</span></td>
+            </tr>
+            <tr>
+              <td><b>止盈冷却</b><br><small>止盈后N天禁买同标的</small></td>
+              <td>回撤解剖</td>
+              <td>问题区间 6.59% → <span class="num-pos">9.79%</span> ✅<br>十年 → <span class="num-neg">37.18%</span> ❌</td>
+              <td><span class="badge badge-mixed">分裂</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>规律：教科书标准件全灭，解剖刀下的改进才有效</h3>
         <ul>
-          <li>单一 <b>12 个月</b>总收益回看期，同时用于排名和绝对动量过滤</li>
-          <li>永远 <b>100% 全仓单一资产</b>，<b>月度</b>调仓</li>
-          <li>美股 12 个月收益跑输 T-bill → 切到综合债券</li>
-          <li>绝对动量为正时：SPY（美股）vs VEU（非美股）二选一</li>
-          <li>第三方回测 1986-02 ~ 2026-07：CAGR <span class="num-pos">12.3%</span>、Sharpe 0.98、波动率 14.2%、最大回撤 <span class="num-neg">-33.7%</span>（含 10bps 单边成本）</li>
+          <li><b>上证空仓 ≈ 绝对动量门</b>：它已是 regime filter，P0 动量门功能重叠，只增加零轴附近反复进出。</li>
+          <li><b>黄金/国债已在池 ≈ 防御层</b>：股市崩时相对动量天然选中它们，显式防御规则反而在防御资产间频繁互切。</li>
+          <li><b>上证空仓同时是所有资产的总风控</b>：豁免纳指黄金后它们裸奔，回撤从 -19.9% 恶化到 -27.8%——这个"误伤"A股逻辑之外的资产的保护，实际上是 feature 不是 bug。</li>
+          <li><b>止盈即买 ≈ 趋势持续性利用</b>：被止盈的强势标的多数继续涨，冷却它十年维度是亏的。</li>
+          <li><b>空仓冷却有效的原因</b>：它修的不是信号，是信号之间的<b>衔接断层</b>——退出信号没有再入场冷却，这是解剖 2016-01 熔断亏损时发现的真问题。</li>
         </ul>
-        <p style="color:var(--muted);font-size:12px">来源：bestfolio.app/strategies/gem（2026-07 抓取，未经交叉验证）</p>
+        <p style="color:var(--muted);font-size:12px">回归校验：所有开关关闭时十年结果与改动前完全一致（2834.41%），零行为变化。全部开关保留在参数面板，换池子/换区间可自行 ablation。</p>
       </div>
     </div>
 
     <div class="card analysis-card">
-      <div class="card-header"><h2>🛠 改进建议（按优先级）</h2></div>
+      <div class="card-header"><h2>🔍 2015-2017 回撤解剖（-23%，修复耗时 471 个交易日）</h2></div>
+      <div class="analysis-body">
+        <p>峰值 2015-11-25（1.0484）→ 谷底 2016-01-04（0.8069）→ 修复 2017-10-31。逐笔决策复盘发现三个结构性错误：</p>
+
+        <h3>错误 1（致命）：上证空仓卖出后，&gt;3%即买 几天内买回来</h3>
+        <table>
+          <tbody>
+            <tr class="timeline-row"><td>2015-12-02</td><td>卖出创业 -6.31%</td><td>上证空仓</td><td>← 风控离场</td></tr>
+            <tr class="timeline-row"><td>2015-12-03</td><td>买入创业</td><td>&gt;3%即买</td><td>← 次日买回 ❌</td></tr>
+            <tr class="timeline-row"><td>2015-12-25</td><td>卖出黄金 +0.03%</td><td>上证空仓</td><td>← 风控再次离场</td></tr>
+            <tr class="timeline-row"><td>2015-12-30</td><td>买入创业</td><td>&gt;3%即买</td><td>← 5 天后满仓创业 ❌</td></tr>
+            <tr class="timeline-row"><td>2016-01-04</td><td>创业→黄金 <span class="num-neg">-11.50%</span></td><td>止损</td><td>← 熔断股灾，回撤一半来自这一刀</td></tr>
+          </tbody>
+        </table>
+        <p>恐慌抄底有锁仓期（crash_lock），但<b>风控退出后没有任何再入场冷却</b>——风控信号有效期只有 1 天。<b>「空仓冷却」开关就是修这个。</b></p>
+
+        <h3>错误 2：加速止盈空转，止盈次日原价买回</h3>
+        <p>2016-02 黄金：02-15 止盈(+13.14%) → 02-16 买回 → 02-19 止盈 → 02-22 买回 → 02-25 止盈 → 02-26 买回。11 天 3 次循环，每次白交双边成本，信号自我打架。「止盈冷却」开关可复现修复，但十年维度实测为负，默认关闭。</p>
+
+        <h3>错误 3：2016 全年震荡市，被来回打脸 ~35 次</h3>
+        <p>每次切换亏 1-3%，一年磨掉约 10%。坑是 2016-01 熔断砸的，但修复要两年是因为 2016 全年又在坑底多挖了 10%。</p>
+
+        <div class="note-box">
+          <b>一句话诊断：</b>退出规则（上证空仓/止损/加速止盈）与再入场规则（&gt;3%即买/确认买入）之间没有衔接。所有退出信号都会在 1-5 天内被再入场规则推翻。
+        </div>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🔍 2016-04 ~ 2017-09 回撤解剖 II（-18.6%，修复耗时 341 个交易日，冷却3天配置）</h2></div>
+      <div class="analysis-body">
+        <p>峰值 2016-04-14（1.1290）→ 谷底 2016-06-21（0.9188）→ 修复 2017-09-04。<b>这段和上一段不是同一种病</b>：空仓冷却治好了"风控被推翻"，这段是无趋势震荡市被动量差反复收割。</p>
+
+        <h3>亏损构成：2 个月 5 次切换，4 次亏损，累计约 -15%</h3>
+        <table>
+          <tbody>
+            <tr class="timeline-row"><td>2016-04-20</td><td>创业→纳指 <span class="num-neg">-3.31%</span></td><td>&gt;3%切换</td></tr>
+            <tr class="timeline-row"><td>2016-04-29</td><td>纳指→黄金 <span class="num-neg">-2.67%</span></td><td>&gt;3%切换</td></tr>
+            <tr class="timeline-row"><td>2016-05-26</td><td>黄金→纳指 <span class="num-neg">-2.61%</span></td><td>正常切换</td></tr>
+            <tr class="timeline-row"><td>2016-06-07</td><td>纳指→创业 <span class="num-pos">+1.27%</span></td><td>&gt;3%切换</td></tr>
+            <tr class="timeline-row"><td>2016-06-13</td><td>创业→黄金 <span class="num-neg">-6.26%</span></td><td>止损</td></tr>
+          </tbody>
+        </table>
+        <p>亏损交易 6 次里 4 次是 <b>"&gt;3%切换"</b>（exception_gap 快速通道）。趋势市里它是加速引擎；但在强弱每周轮换的震荡市里，某资产动量突然高出 3% 往往正是短期超涨、即将均值回归的时刻——它变成了系统性"买在局部顶"的机器。</p>
+
+        <h3>为什么修复要一年多：池子里没有趋势可抱</h3>
+        <ul>
+          <li>创业：2016 全年阴跌通道</li>
+          <li>纳指：美国大选前宽幅震荡</li>
+          <li>黄金：7 月见顶后下半年持续回落</li>
+        </ul>
+        <p>动量轮动的 alpha 来自"趋势的持续性"，三只资产全是震荡/阴跌时，每次切换都在追逐不存在的趋势。直到 2017 年纳指走出持续行情才真正爬出坑。</p>
+
+        <div class="note-box">
+          <b>诊断结论：</b>这段亏损是动量策略的<b>固有成本</b>（无趋势年份的 whipsaw 税），不是可修复的 bug。想"修"就得加震荡市检测器——那是拿 2016 年拟合出来的新参数，属于过拟合陷阱，不建议。观察点：亏损高度集中在 exception_gap（&gt;3%切换）通道，它是策略里"趋势市加速 / 震荡市自残"的双刃剑。
+        </div>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>📉 十年 8 次大回撤全解剖（&gt;10%，冷却3天配置，2016-07 ~ 2026-07）</h2></div>
+      <div class="analysis-body">
+        <table>
+          <thead>
+            <tr><th>#</th><th>区间</th><th>深度</th><th>修复耗时</th><th>病因</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>①</td><td>2020-01-17 → 2020-02-03</td><td class="num-neg">-12.0%</td><td class="num-pos">10 天</td><td>新冠疫情(国内)</td></tr>
+            <tr><td>②</td><td>2020-02-13 → 2020-03-23</td><td class="num-neg">-18.8%</td><td>95 天</td><td>全球疫情流动性危机</td></tr>
+            <tr><td>③</td><td>2020-08-03 → 2020-08-12</td><td class="num-neg">-10.2%</td><td class="num-pos">16 天</td><td>追在黄金历史大顶</td></tr>
+            <tr><td>④</td><td>2020-09-02 → 2020-10-23</td><td class="num-neg">-15.7%</td><td>87 天</td><td>止盈空转后接飞刀</td></tr>
+            <tr><td>⑤</td><td>2023-07-19 → 2023-12-05</td><td class="num-neg">-10.7%</td><td>126 天</td><td>A股阴跌磨损</td></tr>
+            <tr><td>⑥</td><td>2024-07-09 → 2024-09-04</td><td class="num-neg">-14.2%</td><td class="num-pos">56 天</td><td>日元套息平仓冲击</td></tr>
+            <tr><td>⑦</td><td>2025-10-09 → 2025-12-16</td><td class="num-neg">-15.7%</td><td>126 天</td><td>巨盈后止盈空转+追高止损</td></tr>
+            <tr><td>⑧</td><td>2026-06-01 → 2026-07-28</td><td class="num-neg"><b>-25.7%</b></td><td class="num-neg"><b>未修复(当前)</b></td><td>全面下跌连环止损</td></tr>
+          </tbody>
+        </table>
+
+        <h3>① 2020-02：新冠疫情国内波 —— 策略行为满分</h3>
+        <p>持创业过春节，02-03 节后首日 -8% 暴跌吃 -9.74%，<b>恐慌抄底当天精准触发</b>，02-12 反弹 +17.42%，10 天修复。外生冲击不可避免，抄底踩中疫情底。</p>
+
+        <h3>② 2020-03：全球流动性危机 —— "正确的错误"</h3>
+        <p>03-09 创业止损(-6.17%)→换黄金，03-16 黄金<b>也</b>止损(-6.71%)——美元流动性挤兑下黄金国债都在跌，无差别抛售。03-18 恐慌抄底再次买在几乎最低点。系统性风险，非策略缺陷。</p>
+
+        <h3>③ 2020-08：追在黄金历史大顶 —— 首次出现"追高接顶"模式</h3>
+        <p>黄金 8 月初冲历史新高，策略 08-06 "&gt;3%切换"追入 → 买在 2075 大顶 → 08-12 止损 -8.38%。动量策略固有弱点：资产短期暴涨后动量最强，恰是动能耗尽时。靠纳指 +15.31% 十六天回血。</p>
+
+        <h3>④ 2020-09：止盈空转后接飞刀 —— 与 2016-02 同一种病</h3>
+        <p>8月底-9月初对纳指<b>连续 4 次加速止盈+次日买回</b>(+15.31/+4.30/+5.43/+4.06)，第 5 次买回后 09-04 纳指单日 -5% 吃 -8.66%。<b>止盈 4 次全是无用功，真正大跌那次仓位在里头——止盈不减仓等于没止盈。</b></p>
+
+        <h3>⑤ 2023 下半年：A股阴跌磨损 —— 纯 whipsaw 税</h3>
+        <p>创业持续阴跌，策略在黄金/国债/纳指间轮转，每笔亏 1-3%，温水煮青蛙半年 -10.7%。无单笔错误，震荡市固有成本（同 2016 年那段）。</p>
+
+        <h3>⑥ 2024-08~09：日元套息平仓冲击 —— 修复靠 9/24 行情</h3>
+        <p>08-05 全球套息交易崩盘，黄金/纳指齐跌，08-06 切国债(-4.43%)，09-04 纳指止损(-5.13%)。<b>09-24 中国政策大招，创业暴涨，09-27 止盈 +15.52% 一把回血。</b></p>
+
+        <h3>⑦ 2025-10~12：巨盈后止盈空转 —— 模式③④合体</h3>
+        <p>10-14 黄金一把 +43.51%（2025 黄金大牛）→ 老毛病复发：4 次止盈+次日买回 → 10-28 追纳指止损(-5.56%) → 11-18 上证空仓(-5.98%) → Q4 震荡磨损。巨盈没守住。</p>
+
+        <h3>⑧ 2026-06~07：全面下跌连环止损 —— 十年最深，当前未修复</h3>
+        <table>
+          <tbody>
+            <tr class="timeline-row"><td>2026-06-08</td><td>纳指止损</td><td class="num-neg">-9.79%</td><td>← 纳指 6 月崩</td></tr>
+            <tr class="timeline-row"><td>2026-07-02</td><td>创业止损</td><td class="num-neg">-7.85%</td><td>← 换创业，创业 7 月崩</td></tr>
+            <tr class="timeline-row"><td>2026-07-13</td><td>创业再止损</td><td class="num-neg">-7.17%</td><td>← 反弹是假突破，二次埋</td></tr>
+          </tbody>
+        </table>
+        <p>五周内三次止损：每个"反弹"都是熊市陷阱，所有资产轮动下跌，没有强者可选。结构与 2015-12 熔断前相似（风控退出→快速再入场→再被埋）——<b>空仓冷却 3 天在全面熊市里不够长</b>（07-06 空仓、07-09 即买回）。恐慌抄底 07-17 介入创业，07-28 切黄金，净值正在谷底。</p>
+
+        <h3>四种病因汇总</h3>
+        <table>
+          <thead><tr><th>病因</th><th>次数</th><th>能否改进</th></tr></thead>
+          <tbody>
+            <tr><td>外生系统性冲击（疫情×2、套息、9/24前夜）</td><td>4</td><td>❌ 不可避免，抄底模块处理得很好</td></tr>
+            <tr><td>追高接顶（动量最强=动能耗尽）</td><td>3</td><td>⚠️ 结构性弱点，exception_gap 通道是帮凶</td></tr>
+            <tr><td>止盈空转（止盈不减仓=没止盈）</td><td>3</td><td>⚠️ 已知问题，但止盈冷却实测十年为负，两难</td></tr>
+            <tr><td>连环止损（熊市陷阱反复埋）</td><td>1（当前）</td><td>❓ 观察中，冷却3天在全面熊市可能不够</td></tr>
+          </tbody>
+        </table>
+        <div class="note-box">
+          <b>关键结论：</b>8 次回撤里没有任何一次是"信号算错"——亏损全部来自 <b>市场结构本身</b>（系统性冲击 / 无趋势震荡 / 全面熊市）。策略的 alpha 在趋势市，这三种环境是必须要交的税。当前第⑧次回撤已超过 2020-03 疫情成为十年最深，修复路径值得持续跟踪。
+        </div>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>📊 参数稳健性矩阵（45 组十年回测，池：纳指/黄金/创业/5年国债，冷却3天，数值为年化收益）</h2></div>
+      <div class="analysis-body">
+
+        <h3>确认天数 = 1</h3>
+        <table>
+          <thead><tr><th>动量周期 \ 止损</th><th>-3%</th><th>-5%</th><th>-8%</th></tr></thead>
+          <tbody>
+            <tr><td>10 日</td><td>15.43%</td><td>16.74%</td><td>16.15%</td></tr>
+            <tr><td>15 日</td><td>16.72%</td><td>15.93%</td><td>16.79%</td></tr>
+            <tr><td><b>20 日</b></td><td><b>37.08%</b></td><td><b>37.38%</b></td><td><b>37.37%</b></td></tr>
+            <tr><td>25 日</td><td>32.53%</td><td>32.85%</td><td>32.50%</td></tr>
+            <tr><td>30 日</td><td>22.18%</td><td>23.18%</td><td>23.10%</td></tr>
+          </tbody>
+        </table>
+
+        <h3>确认天数 = 2（当前参数）</h3>
+        <table>
+          <thead><tr><th>动量周期 \ 止损</th><th>-3%</th><th>-5%</th><th>-8%</th></tr></thead>
+          <tbody>
+            <tr><td>10 日</td><td>18.06%</td><td>18.59%</td><td>18.54%</td></tr>
+            <tr><td>15 日</td><td>21.44%</td><td>22.44%</td><td>21.93%</td></tr>
+            <tr><td><b>20 日</b></td><td><b>40.03%</b></td><td><b>40.93%</b></td><td><b>40.56%</b></td></tr>
+            <tr><td>25 日</td><td>23.73%</td><td>24.27%</td><td>23.05%</td></tr>
+            <tr><td>30 日</td><td>21.73%</td><td>22.64%</td><td>21.91%</td></tr>
+          </tbody>
+        </table>
+
+        <h3>确认天数 = 3</h3>
+        <table>
+          <thead><tr><th>动量周期 \ 止损</th><th>-3%</th><th>-5%</th><th>-8%</th></tr></thead>
+          <tbody>
+            <tr><td>10 日</td><td>18.61%</td><td>18.81%</td><td>18.91%</td></tr>
+            <tr><td>15 日</td><td>18.36%</td><td>18.30%</td><td>17.43%</td></tr>
+            <tr><td><b>20 日</b></td><td><b>35.35%</b></td><td><b>33.84%</b></td><td><b>33.32%</b></td></tr>
+            <tr><td>25 日</td><td>27.79%</td><td>27.15%</td><td>24.59%</td></tr>
+            <tr><td>30 日</td><td>22.30%</td><td>22.92%</td><td>21.09%</td></tr>
+          </tbody>
+        </table>
+
+        <h3>解读</h3>
+        <ul>
+          <li><b>止损线：稳健 ✅</b>。同一（确认天数 × 动量周期）下，-3%/-5%/-8% 差异基本在 1.5pp 以内，参数不敏感。</li>
+          <li><b>确认天数：温和敏感 ⚠️</b>。1 天 ≈ 2 天 &gt; 3 天（动量20日档：37-41% → 33-35%）。当前值 2 天合理。</li>
+          <li><b>动量周期：孤峰不是高原 ❌</b>。10日/15日只有 15-22%，20日突然跳到 33-41%，25日又掉回 23-33%。<b>20 日是尖峰</b>，邻居参数年化差 15pp 以上。</li>
+          <li><b>好消息</b>：20 日的峰在全部 9 个（确认×止损）组合里都稳定出现（33-41%），说明它对另外两个参数不敏感；且网格内最差组合（15-19%）仍然跑赢买入持有基准——引擎在全网格都工作，只是 40%+ 这个数字依赖 20 日周期。</li>
+          <li><b>诚实的期望区间</b>：如果未来市场的节奏周期偏离 20 个交易日，年化大概率回落到 <b>20-35%</b> 区间（15日/25日的水平）。全网格最大回撤 -20% ~ -28%，无失控点。</li>
+        </ul>
+
+        <h3>扩展参数单变量验证（其余 6 个参数，冷却3天配置，数值为年化收益）</h3>
+        <table>
+          <thead><tr><th>参数</th><th>取值1</th><th>取值2（基准）</th><th>取值3</th><th>取值4</th><th>判定</th></tr></thead>
+          <tbody>
+            <tr><td>最小动量差 min_gap</td><td>0.5 → 39.23%</td><td><b>1.0 → 40.93%</b></td><td>2.0 → 39.52%</td><td>—</td><td><span class="badge badge-pass">稳健</span></td></tr>
+            <tr><td>例外动量差 exception_gap</td><td>2.0 → <span class="num-pos">41.37%</span></td><td><b>3.0 → 40.93%</b></td><td>5.0 → 41.06%</td><td>—</td><td><span class="badge badge-pass">稳健</span></td></tr>
+            <tr><td>最短持有 min_hold</td><td>5 → 39.15%</td><td><b>10 → 40.93%</b></td><td>15 → 40.13%</td><td>20 → 38.36%</td><td><span class="badge badge-pass">稳健</span></td></tr>
+            <tr><td>加速止盈 accel_sigma</td><td>2.0 → 37.97%</td><td><b>3.0 → 40.93%</b></td><td>4.0 → 35.72%</td><td>—</td><td><span class="badge badge-mixed">温和敏感</span></td></tr>
+            <tr><td>恐慌抄底 crash_sigma</td><td>-2.0 → 40.00%</td><td><b>-2.5 → 40.93%</b></td><td>-3.0 → 40.94%</td><td>—</td><td><span class="badge badge-pass">稳健</span></td></tr>
+            <tr><td>空仓即买 cash_skip_gt</td><td>2.0 → 40.93%</td><td><b>3.0 → 40.93%</b></td><td>5.0 → 40.93%</td><td>—</td><td><span class="badge badge-pass">零敏感</span></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li><b>6 个参数全部稳健</b>（最大偏差 ±5pp，多数 ±2pp 内），不存在第二个孤峰。整个参数空间唯一的尖峰就是动量周期 20 日。</li>
+          <li>观察点：exception_gap=2.0 时年化略高（41.37%）且回撤更浅（-21.62% vs -25.65%，Calmar 1.91 vs 1.60）。差距不大不构成换参理由，但说明"快速切换通道"没有想象中那么危险。</li>
+          <li>cash_skip_gt 在 2/3/5 三档结果完全一致——">3%即买"路径实际触发时动量都远超阈值，该参数形同虚设，未来可考虑移除以减少参数面。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🛠 剩余改进方向</h2></div>
       <div class="analysis-body">
 
         <div class="reco-item">
-          <div class="reco-title">1. 用"每标的绝对动量 + 防御资产"替代"上证空仓" <span class="badge badge-p1">P0</span></div>
+          <div class="reco-title">1. Top-K 持仓替代 Top-1 <span class="badge badge-todo">唯一未实测</span></div>
           <div class="reco-why">
-            GEM/DAA/VAA 的核心思想：不是用某个外部指数当总开关，而是<b>每个标的自己带趋势过滤</b>——自身动量为负就不持有它，即使它是池里相对最强。
-            然后不是空仓吃 0 收益，而是<b>切到防御资产</b>（黄金、红利低波、债券 ETF）。
-            普跌行情里，空仓只能保命，切防御资产还能赚钱。
+            DAA 持 Top-3、VAA 持 Top-4。只持 1 只要吃单标的黑天鹅和全部切换冲击；Top-2 等权通常回撤显著下降，代价是收益略降。8 个开关测完后，这是仅剩的结构性分散手段。
           </div>
-          <div class="reco-how">落地：<code>signal.py</code> 增加 per-asset 绝对动量判断；防御标的设为目标资产而非 -1 空仓。改动量中等，预期收益最大。</div>
+          <div class="reco-how">落地：<code>signal.py</code> 的 <code>pos</code> 从单 int 改为权重 dict，架构改动较大（~50 行）。</div>
         </div>
 
         <div class="reco-item">
-          <div class="reco-title">2. 动量排名除以波动率（Sharpe 动量） <span class="badge badge-p1">P0</span></div>
+          <div class="reco-title">2. 参数稳健性验证 <span class="badge badge-pass">已完成（45+19 组）</span></div>
           <div class="reco-why">
-            VAA 的做法：<code>score = 动量 / 波动率</code>。裸 20 日涨幅排名天然偏好高波动标的（创业永远比红利低波排名高），换成风险调整后能明显降低回撤。
+            两组网格结果见上方矩阵：主网格（动量周期×止损×确认）+ 扩展单变量（其余 6 参数）。<b>全参数空间唯一孤峰是动量周期 20 日</b>，其余全部稳健。诚实期望区间 20-35% 年化，40%+ 依赖 20 日周期恰好匹配市场节奏。
           </div>
-          <div class="reco-how">落地：<code>score = mom20 / std(日收益, 20)</code>，一行代码。建议先做这个验证效果。</div>
+          <div class="reco-how">结论：参数点可用，但心里要按 15/25 日档位的收益水平做预期管理。cash_skip_gt 零敏感，未来可移除以精简参数面。</div>
         </div>
 
-        <div class="reco-item">
-          <div class="reco-title">3. Top-K 持仓替代 Top-1 <span class="badge badge-p2">P1</span></div>
-          <div class="reco-why">
-            DAA 持 Top-3 等权、VAA 持 Top-4。只持 1 只要吃单标的黑天鹅和全部切换冲击；Top-2/Top-3 等权通常<b>回撤显著下降、Calmar 上升</b>，代价是收益略降。
-          </div>
-          <div class="reco-how">落地：<code>signal.py</code> 的 <code>pos</code> 从单个 int 改为权重 dict，架构改动较大。</div>
-        </div>
-
-        <div class="reco-item">
-          <div class="reco-title">4. 多周期动量组合 <span class="badge badge-p2">P1</span></div>
-          <div class="reco-why">
-            单一 20 日周期很脆弱，换参数结果就变。经典做法是 1/3/6/12 月多周期加权或投票，降低对单一参数的敏感度。
-          </div>
-          <div class="reco-how">落地：<code>score = 0.5×mom20 + 0.3×mom60 + 0.2×mom120</code>，改动小。</div>
-        </div>
-
-        <div class="reco-item">
-          <div class="reco-title">5. 动量崩溃防护系统化 <span class="badge badge-p3">P2</span></div>
-          <div class="reco-why">
-            恐慌抄底本质上是一种崩溃应对，但它是左侧加仓。经典防护（Daniel &amp; Moskowitz）：深跌后波动率飙升 + 急反弹时，弱资产反弹最猛，按相对动量追进去容易接飞刀——此 regime 下应<b>临时切防御或暂停轮动</b>。
-          </div>
-          <div class="reco-how">落地：检测"市场 N 日回撤超 X% + 波动率骤升"，触发后冻结切换 M 天。</div>
-        </div>
-
-        <div class="reco-item">
-          <div class="reco-title">6. 高波动标的仓位上限 <span class="badge badge-p3">P2</span></div>
-          <div class="reco-why">
-            创业/科创50 这类高波动标的设仓位上限（如 70%），其余放防御资产。简版波动率目标，拉平各标的风险贡献。
-          </div>
-          <div class="reco-how">落地：买入时按标的波动率分档限制仓位。</div>
-        </div>
-
-        <div class="reco-item">
-          <div class="reco-title">7. 动量质量做 tie-breaker（frog in the pan） <span class="badge badge-p3">P2</span></div>
-          <div class="reco-why">
-            动量接近时，选"上涨路径平滑"的（上涨天数占比高、单日涨幅均匀），而不是"几根大阳线拉出来"的。平滑动量持续性更好。
-          </div>
-          <div class="reco-how">落地：动量差小于阈值时，比较 20 日内上涨天数占比。</div>
-        </div>
-
-        <p style="margin-top:14px"><b>建议落地顺序：</b>#2（一行代码）→ #1（中等改动、预期收益最大）→ #3（架构改动）→ #4 → #5/#6/#7。每个都以 ablation 开关形式加入，逐一对比十年回测。</p>
+        <p style="margin-top:14px"><b>已关闭的开关</b>（实测无效但保留在面板）：绝对动量门、防御切换、Sharpe 动量、多周期动量、FIP、豁免纳指黄金、止盈冷却。换池子/换区间时可重新验证。</p>
       </div>
     </div>
 
@@ -229,7 +462,7 @@
             <tr><td>0.2%</td><td class="num-pos">1427%</td><td>32.48%</td><td class="num-neg">-23.74%</td><td>1.37</td></tr>
           </tbody>
         </table>
-        <p>十年 290 次交易，滑点对长期复利的影响显著。小资金实际冲击成本接近 0，建议回测按 0.05% 滑点评估更诚实。</p>
+        <p>十年 290 次交易，滑点对长期复利影响显著。小资金实际冲击成本接近 0，建议回测按 0.05% 滑点评估更诚实。</p>
       </div>
     </div>
 

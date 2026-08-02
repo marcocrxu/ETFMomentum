@@ -20,6 +20,7 @@ ALL_CODES = {
     "科创50":"588000.SH","沪深300":"510300.SH","上证50":"510050.SH",
     "中证2000":"563300.SH","港股创新药":"513120.SH","有色":"512400.SH",
     "通信":"515880.SH","半导体":"512480.SH","红利低波":"512890.SH",
+    "5年国债":"511010.SH",
     "30年国债":"511090.SH",
 }
 
@@ -53,10 +54,15 @@ def run_backtest(params):
     mom_period = int(params.get("mom_period", 20))
 
     # Config
-    sh_cash = params.get("sh_cash", True)
-    if isinstance(sh_cash, str): sh_cash = (sh_cash == "1" or sh_cash.lower() == "true")
+    sh_cash_raw = params.get("sh_cash", True)
+    if isinstance(sh_cash_raw, str):
+        sh_cash_exempt = (sh_cash_raw == "2")
+        sh_cash = sh_cash_raw in ("1", "2") or sh_cash_raw.lower() == "true"
+    else:
+        sh_cash_exempt = bool(params.get("sh_cash_exempt", False))
+        sh_cash = bool(sh_cash_raw)
     cfg = SignalConfig(
-        sh_cash=sh_cash, method=params.get("method", "sigma"),
+        sh_cash=sh_cash, sh_cash_exempt=sh_cash_exempt, method=params.get("method", "sigma"),
         accel_sigma=float(params.get("accel_sigma", 3.0)),
         accel_enabled=params.get("accel_on", True),
         crash_sigma=float(params.get("crash_sigma", -2.5)),
@@ -69,11 +75,21 @@ def run_backtest(params):
         confirm_days=int(params.get("confirm_days", 2)),
         commission=float(params.get("commission", 0.0001)),
         slippage=float(params.get("slippage", 0.0)),
+        abs_mom_enabled=params.get("abs_mom_on", False),
+        defensive_enabled=params.get("defensive_on", False),
+        risk_adj_mom=params.get("risk_adj_on", False),
+        accel_cooldown=int(params.get("accel_cooldown", 0)),
+        sh_cash_cooldown=int(params.get("sh_cash_cooldown", 3)),
+        multi_mom=params.get("multi_mom_on", False),
+        fip_tiebreak=params.get("fip_on", False),
     )
 
-    # 数据: 起始日往前拉 mom_period+15 天作为动量预热
+    # 数据: 起始日往前拉预热天数 (多周期动量需要60日动量, 预热75天)
+    _warmup = mom_period + 15
+    if params.get("multi_mom_on", False):
+        _warmup = max(_warmup, 75)
     _bt_start_dt = _dt.datetime.strptime(bt_start.replace("-",""), "%Y%m%d")
-    _fetch_start = (_bt_start_dt - _dt.timedelta(days=mom_period + 15)).strftime("%Y%m%d")
+    _fetch_start = (_bt_start_dt - _dt.timedelta(days=_warmup)).strftime("%Y%m%d")
     dfs = FEED.get_dataframe(codes, _fetch_start, bt_end.replace("-",""))
     if not dfs: return {"error": "数据加载失败"}
 

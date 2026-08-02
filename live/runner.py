@@ -165,9 +165,12 @@ class LiveRunner:
                 with open(wu_file) as f: wu = json.load(f)
                 with open(bs_file) as f: bs = json.load(f)
                 to_user = wu.get("last_user_id", "")
+                ctx = wu.get("context_token", "")
                 bot_token = bs.get("bot_token", "")
                 baseurl = bs.get("baseurl", "https://ilinkai.weixin.qq.com")
-                if to_user and bot_token:
+                if not ctx:
+                    print("微信: 无 context_token (用户需先给 bot 发条消息)")
+                elif to_user and bot_token:
                     import secrets, time as _t, struct, base64 as _64
                     uin = _64.b64encode(struct.pack(">I", __import__("random").randint(1, 2**31))).decode()
                     cid = f"stock-bot:{int(_t.time()*1000)}-{secrets.token_hex(4)}"
@@ -175,10 +178,14 @@ class LiveRunner:
                         headers={"Content-Type":"application/json","AuthorizationType":"ilink_bot_token",
                                  "X-WECHAT-UIN":uin,"Authorization":f"Bearer {bot_token}"},
                         json={"msg":{"from_user_id":"","to_user_id":to_user,"client_id":cid,
-                                     "message_type":2,"message_state":2,"context_token":"",
+                                     "message_type":2,"message_state":2,"context_token":ctx,
                                      "item_list":[{"type":1,"text_item":{"text":msg}}]},
                                "base_info":{"channel_version":"1.0.2"}}, timeout=15)
-                    print("微信: HTTP %d" % resp.status_code)
+                    ret = resp.json().get("ret", -999)
+                    if ret == 0:
+                        print("微信: 发送成功")
+                    else:
+                        print("微信: 发送失败 ret=%s %s" % (ret, resp.text[:150]))
             else:
                 print("微信: 未找到用户/会话文件")
         except Exception as e:

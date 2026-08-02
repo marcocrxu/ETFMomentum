@@ -13,6 +13,7 @@ const ALL_ETFS = [
   { name: '通信', code: '515880' },
   { name: '半导体', code: '512480' },
   { name: '红利低波', code: '512890' },
+  { name: '5年国债', code: '511010' },
   { name: '30年国债', code: '511090' }
 ];
 
@@ -89,7 +90,7 @@ function collectParams() {
     start_date: document.getElementById('start_date').value,
     end_date: document.getElementById('end_date').value,
     universe: etfs.join(','),
-    sh_cash: document.getElementById('sh_cash').value === '1',
+    sh_cash: document.getElementById('sh_cash').value,
     method: document.getElementById('method').value,
     mom_period: mom_period,
     accel_sigma: +document.getElementById('accel_sigma').value,
@@ -104,6 +105,13 @@ function collectParams() {
     confirm_days: +document.getElementById('confirm_days').value,
     commission: +document.getElementById('commission').value / 100,
     slippage: +document.getElementById('slippage').value / 100,
+    abs_mom_on: document.getElementById('abs_mom_on').checked,
+    defensive_on: document.getElementById('defensive_on').checked,
+    risk_adj_on: document.getElementById('risk_adj_on').checked,
+    accel_cooldown: +document.getElementById('accel_cooldown').value || 0,
+    sh_cash_cooldown: +document.getElementById('sh_cash_cooldown').value || 0,
+    multi_mom_on: document.getElementById('multi_mom_on').checked,
+    fip_on: document.getElementById('fip_on').checked,
   };
 }
 
@@ -309,7 +317,8 @@ function applyConfig(cfg) {
   };
   setVal('start_date', cfg.start_date);
   setVal('end_date', cfg.end_date);
-  setVal('sh_cash', cfg.sh_cash === true || cfg.sh_cash === 'true' || cfg.sh_cash === '1' ? '1' : '0');
+  const scv = String(cfg.sh_cash);
+  setVal('sh_cash', scv === '2' ? '2' : ((cfg.sh_cash === true || scv === 'true' || scv === '1') ? '1' : '0'));
   setVal('method', cfg.method);
   if (cfg.mom_period != null) {
     const presets = ['5', '10', '20', '30'];
@@ -330,6 +339,13 @@ function applyConfig(cfg) {
   };
   setChecked('accel_on', cfg.accel_on);
   setChecked('crash_on', cfg.crash_on);
+  setChecked('abs_mom_on', cfg.abs_mom_on);
+  setChecked('defensive_on', cfg.defensive_on);
+  setChecked('risk_adj_on', cfg.risk_adj_on);
+  setChecked('multi_mom_on', cfg.multi_mom_on);
+  setChecked('fip_on', cfg.fip_on);
+  setVal('accel_cooldown', cfg.accel_cooldown);
+  setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
   setVal('accel_sigma', cfg.accel_sigma);
   setVal('crash_sigma', cfg.crash_sigma);
   setVal('crash_lock', cfg.crash_lock);

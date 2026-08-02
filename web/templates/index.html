@@ -39,8 +39,64 @@
           <label class="group-label">上证空仓</label>
           <select id="sh_cash">
             <option value="1">开启</option>
+            <option value="2">仅A股(豁免纳指黄金)</option>
             <option value="0">关闭</option>
           </select>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">空仓冷却天</label>
+          <input id="sh_cash_cooldown" type="number" value="3" min="0" max="60">
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">绝对动量门</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="abs_mom_on">
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">防御切换</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="defensive_on">
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">风险调整动量</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="risk_adj_on">
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">多周期动量</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="multi_mom_on">
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">FIP动量质量</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="fip_on">
+              <span class="track"></span>
+            </label>
+          </div>
         </div>
 
         <div class="param-group">
@@ -73,6 +129,11 @@
             </label>
             <input id="accel_sigma" type="number" step="0.5" value="3.0">
           </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label">止盈冷却天</label>
+          <input id="accel_cooldown" type="number" value="0" min="0" max="60">
         </div>
 
         <div class="param-group">

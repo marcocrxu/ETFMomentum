@@ -24,6 +24,21 @@ class SignalConfig:
     method: str = "sigma"          # sigma / percentile / ewma_z
     method_pct: float = 2.0        # percentile: 使用P值 (仅method=percentile)
     method_halflife: int = 252     # ewma_z: 半衰期 (仅method=ewma_z)
+    abs_mom_enabled: bool = False  # 绝对动量门: 全池动量为负时强制空仓 (抄底锁仓期内豁免)
+    defensive_enabled: bool = False  # 防御切换: 空仓信号触发时改持防御资产(动量最强且为正)
+    risk_adj_mom: bool = False     # 风险调整动量: 排名用 动量/20日波动率 (阈值仍用原始动量)
+    accel_cooldown: int = 0        # 加速止盈后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免)
+    sh_cash_cooldown: int = 3      # 上证空仓后再入场冷却天数 (0=关闭, 恐慌抄底豁免; 2026-08 起默认3天)
+    sh_cash_exempt: bool = False   # 上证空仓仅对A股标的生效 (豁免纳指/黄金)
+    multi_mom: bool = False        # 多周期动量: 排名分 = 3×mom10+2×mom20+1×mom60
+    fip_tiebreak: bool = False     # FIP动量质量: 动量差<min_gap时选上涨路径更平滑者
+
+
+# 防御资产池: 空仓/防御信号触发时的候选持有标的
+DEFENSIVE_NAMES = {"黄金", "红利低波", "5年国债"}
+
+# 上证空仓豁免名单: 与A股低相关的资产, 豁免模式下不受上证空仓过滤
+SH_CASH_EXEMPT_NAMES = {"纳指", "黄金"}
 
 
 def compute_signals(
@@ -95,8 +110,37 @@ def compute_signals(
     # ── 模拟 ──
     nav = 1.0; pos = -1; hs = -1; hn = 1.0; streak = 0
     crash_held_until = -1
+    accel_block_idx = -1; accel_block_until = -1   # 加速止盈冷却状态
+    sh_cash_block_until = -1                        # 空仓再入场冷却状态
     actions = []
     nav_log = []
+
+    def _def_target(ms, vm):
+        """防御资产中动量最强且为正者, 无则 -1 (防御资产也走绝对动量)"""
+        best, best_m = -1, 0.0
+        for i, nm in enumerate(etf_names):
+            if nm in DEFENSIVE_NAMES and vm[i] and ms[i] > best_m:
+                best, best_m = i, ms[i]
+        return best
+
+    # ── 20日波动率 (仅风险调整动量开启时使用) ──
+    vol_mat = np.full(price_mat.shape, np.nan)
+    if cfg.risk_adj_mom:
+        for i in range(len(etf_names)):
+            vol_mat[i] = pd.Series(price_mat[i]).pct_change().rolling(20).std().values
+
+    # ── 60日动量 (仅多周期动量开启时使用) ──
+    mom60_mat = None
+    if cfg.multi_mom:
+        mom60_mat = np.full(price_mat.shape, np.nan)
+        mom60_mat[:, 60:] = (price_mat[:, 60:] / price_mat[:, :-60] - 1) * 100
+
+    # ── 20日上涨天数占比 (仅FIP开启时使用) ──
+    up_ratio = None
+    if cfg.fip_tiebreak:
+        up_ratio = np.full(price_mat.shape, np.nan)
+        for i in range(len(etf_names)):
+            up_ratio[i] = (pd.Series(price_mat[i]).pct_change() > 0).rolling(20).mean().values
 
     for t in range(vs, n_days):
         # 更新净值（仅用于计算PnL做决策）
@@ -115,9 +159,50 @@ def compute_signals(
         if np.isnan(sh_mom[t]):
             pp = price_mat[pos, t] if pos >= 0 else np.nan; continue
 
-        ti = int(np.argmax(np.where(vm, ms, -np.inf)))
-        sc = (sh_mom[t] > np.nanmax(ms)) if cfg.sh_cash else False
-        sw = False; reason = ""
+        ti_raw = int(np.argmax(np.where(vm, ms, -np.inf)))
+
+        # ── 排名分数: 多周期动量 → 风险调整波动率除法, 阈值判断仍用原始 ms ──
+        if cfg.multi_mom:
+            base = 3.0 * mom10_mat[:, t] + 2.0 * ms + mom60_mat[:, t]
+            score = np.where(vm & ~np.isnan(mom10_mat[:, t]) & ~np.isnan(mom60_mat[:, t]), base, np.nan)
+        else:
+            score = np.where(vm, ms, np.nan)
+
+        if cfg.risk_adj_mom:
+            v_t = vol_mat[:, t]
+            with np.errstate(divide='ignore', invalid='ignore'):
+                score = np.where(~np.isnan(score) & (v_t > 0), score / np.where(v_t > 0, v_t, 1.0), np.nan)
+
+        # ── 加速止盈冷却: N天内把被止盈标的移出候选 (恐慌抄底豁免) ──
+        if accel_block_idx >= 0 and t < accel_block_until:
+            score = np.where(np.arange(len(ms)) == accel_block_idx, np.nan, score)
+
+        sv = ~np.isnan(score)
+        ti = int(np.argmax(np.where(sv, score, -np.inf))) if sv.any() else ti_raw
+
+        # ── FIP 动量质量: 前两名动量差<min_gap时, 选上涨路径更平滑者 ──
+        if cfg.fip_tiebreak and sv.sum() >= 2:
+            order = np.argsort(np.where(sv, score, -np.inf))
+            b, s2 = int(order[-1]), int(order[-2])
+            if (abs(ms[b] - ms[s2]) < cfg.min_gap
+                    and not np.isnan(up_ratio[b, t]) and not np.isnan(up_ratio[s2, t])
+                    and up_ratio[s2, t] > up_ratio[b, t]):
+                ti = s2
+
+        if cfg.sh_cash and cfg.sh_cash_exempt:
+            # 豁免模式: 上证只与非豁免(A股)标的的动量比较
+            ne = [ms[i] for i, nm in enumerate(etf_names)
+                  if nm not in SH_CASH_EXEMPT_NAMES and vm[i]]
+            sc = (sh_mom[t] > max(ne)) if ne else False
+        elif cfg.sh_cash:
+            sc = sh_mom[t] > np.nanmax(ms)
+        else:
+            sc = False
+        sw = False; reason = ""; accel_exit = False
+
+        # ── 空仓冷却: 上证空仓信号存续期间每天顺延, 冷却期内禁止再入场 ──
+        if sc and cfg.sh_cash_cooldown > 0:
+            sh_cash_block_until = t + cfg.sh_cash_cooldown
 
         if ti != pos: streak += 1
         else: streak = 0
@@ -140,13 +225,46 @@ def compute_signals(
             crash_held_until = t + cfg.crash_lock
             reason = "恐慌抄底"
         elif sc:
-            sw = True; np_pos = -1; streak = 0; reason = "上证空仓"
+            if cfg.sh_cash_exempt and pos >= 0 and etf_names[pos] in SH_CASH_EXEMPT_NAMES:
+                pass  # 持有豁免标的(纳指/黄金), 上证空仓不出场
+            elif cfg.sh_cash_exempt and pos == -1:
+                # 空仓时仍可按正常入场规则买豁免标的
+                ex_idx = [i for i, nm in enumerate(etf_names)
+                          if nm in SH_CASH_EXEMPT_NAMES and vm[i]]
+                bought = False
+                if ex_idx:
+                    ei = max(ex_idx, key=lambda i: ms[i])
+                    lm = ms[ei]
+                    if not np.isnan(lm) and (lm >= cfg.cash_skip_gt or streak >= cfg.confirm_days):
+                        sw = True; np_pos = ei; streak = 0
+                        reason = ">3%%即买(豁免)" if lm >= cfg.cash_skip_gt else "确认买入(豁免)"
+                        bought = True
+                if not bought:
+                    sw = True; np_pos = -1; streak = 0; reason = "上证空仓"
+            elif cfg.defensive_enabled:
+                tgt = _def_target(ms, vm)
+                if tgt >= 0:
+                    if tgt != pos:
+                        sw = True; np_pos = tgt; streak = 0; reason = "防御切换"
+                    # tgt == pos: 已持有最优防御资产, 不动
+                else:
+                    sw = True; np_pos = -1; streak = 0; reason = "上证空仓"
+            else:
+                sw = True; np_pos = -1; streak = 0; reason = "上证空仓"
+        elif cfg.abs_mom_enabled and ms[ti] < 0 and t >= crash_held_until:
+            # 绝对动量门: 全池(含防御)动量为负 → 空仓, 且阻止下方买入分支
+            # (锁仓期内豁免, 避免抄底仓位次日被门卖掉)
+            if pos >= 0:
+                sw = True; np_pos = -1; streak = 0; reason = "绝对动量空仓"
         elif pos == -1:
-            lm = ms[ti]
-            if lm >= cfg.cash_skip_gt and not np.isnan(lm):
-                sw = True; np_pos = ti; streak = 0; reason = ">3%%即买"
-            elif streak >= cfg.confirm_days:
-                sw = True; np_pos = ti; streak = 0; reason = "确认买入"
+            if t < sh_cash_block_until:
+                pass  # 空仓冷却期内, 禁止再入场 (恐慌抄底走独立分支, 不受影响)
+            else:
+                lm = ms[ti]
+                if lm >= cfg.cash_skip_gt and not np.isnan(lm):
+                    sw = True; np_pos = ti; streak = 0; reason = ">3%%即买"
+                elif streak >= cfg.confirm_days:
+                    sw = True; np_pos = ti; streak = 0; reason = "确认买入"
         elif ti != pos and t >= crash_held_until:
             gap = ms[ti] - ms[pos]; met = (streak >= cfg.confirm_days)
             if pnl <= cfg.stop_loss:
@@ -157,12 +275,16 @@ def compute_signals(
                 sw = True; np_pos = ti; streak = 0; reason = "正常切换"
         elif cfg.accel_enabled and pos >= 0 and mom10_mat[pos, t] > accel_th.get(pos, 99):
             sw = True; np_pos = -1; streak = 0; reason = "加速止盈"
+            accel_exit = True
 
         if sw:
             cost = cfg.commission + cfg.slippage
             if pos >= 0: nav *= (1 - cost)
             if np_pos >= 0: nav *= (1 - cost); hs = t; hn = nav
             old_pos = pos; pos = np_pos
+            if accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0:
+                accel_block_idx = old_pos
+                accel_block_until = t + cfg.accel_cooldown
             actions.append((t, old_pos, np_pos, reason))
 
         nav_log.append(nav)
