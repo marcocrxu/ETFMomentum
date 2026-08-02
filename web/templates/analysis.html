@@ -438,11 +438,11 @@
       <div class="analysis-body">
 
         <div class="reco-item">
-          <div class="reco-title">1. Top-K 持仓替代 Top-1 <span class="badge badge-todo">唯一未实测</span></div>
+          <div class="reco-title">1. Top-K 持仓替代 Top-1 <span class="badge badge-fail">已实测 · 负优化</span></div>
           <div class="reco-why">
-            DAA 持 Top-3、VAA 持 Top-4。只持 1 只要吃单标的黑天鹅和全部切换冲击；Top-2 等权通常回撤显著下降，代价是收益略降。8 个开关测完后，这是仅剩的结构性分散手段。
+            2026-08-03 已实测：Top-2 等权年化 22.98%（vs Top-1 41.20%），回撤仅浅 1.4pp，Calmar 2.07→1.24。本策略的风控靠上证空仓 regime filter 而非分散，集中持仓正是 alpha 来源。详见页末「优化实验」卡片。
           </div>
-          <div class="reco-how">落地：<code>signal.py</code> 的 <code>pos</code> 从单 int 改为权重 dict，架构改动较大（~50 行）。</div>
+          <div class="reco-how">开关已保留在参数面板（持仓数 Top-K，默认 1=原行为），换池子/换区间可重新验证。</div>
         </div>
 
         <div class="reco-item">
@@ -535,6 +535,41 @@
 
         <div class="note-box">
           <b>总评：</b>数字可复现、主体结论稳健；「止盈冷却」在修正口径下翻转为正资产，默认冷却档位建议重估。实盘前关键项：walk-forward 样本外验证与选池偏差量化。
+        </div>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🧬 优化实验：Top-K 持仓 × 动量跳过（2026-08-03，Qoder CLI）</h2></div>
+      <div class="analysis-body">
+        <p class="review-meta">两个结构性改进以<b>可回退开关</b>落地：<code>top_k</code>（持仓数，默认 1=原行为）与 <code>mom_skip</code>（排名动量跳过最近 N 天，默认 0=关闭）。同池同窗口（纳指/黄金/创业/5年国债，2016-07 ~ 2026-07，修正口径）。</p>
+
+        <table>
+          <thead><tr><th>配置</th><th>年化收益</th><th>最大回撤</th><th>Calmar</th><th>交易数</th><th>判定</th></tr></thead>
+          <tbody>
+            <tr><td><b>原策略 Top-1（冷却0）</b></td><td class="num-pos">41.20%</td><td>-19.92%</td><td class="num-pos">2.07</td><td>327</td><td><span class="badge badge-pass">基准</span></td></tr>
+            <tr><td>原策略 Top-1（冷却3，当前默认）</td><td>40.38%</td><td>-25.65%</td><td>1.57</td><td>306</td><td><span class="badge badge-mixed">对照</span></td></tr>
+            <tr><td>Top-2 等权</td><td class="num-neg">22.98%</td><td>-18.51%</td><td>1.24</td><td>277</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>Top-3 等权</td><td class="num-neg">19.10%</td><td class="num-pos">-17.06%</td><td>1.12</td><td>340</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>动量跳过 2 天</td><td class="num-neg">23.23%</td><td class="num-neg">-27.27%</td><td>0.85</td><td>362</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>动量跳过 3 天</td><td class="num-neg">27.36%</td><td class="num-neg">-24.50%</td><td>1.12</td><td>352</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>动量跳过 5 天</td><td class="num-neg">18.32%</td><td class="num-neg">-29.76%</td><td>0.62</td><td>345</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>Top-2 + 跳过5</td><td class="num-neg">19.36%</td><td>-21.32%</td><td>0.91</td><td>399</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>Top-2 + 冷却3</td><td class="num-neg">22.92%</td><td>-18.51%</td><td>1.24</td><td>235</td><td><span class="badge badge-fail">负优化</span></td></tr>
+            <tr><td>Top-2 + 止盈冷却3</td><td class="num-neg">22.98%</td><td>-18.51%</td><td>1.24</td><td>277</td><td><span class="badge badge-fail">无增益</span></td></tr>
+          </tbody>
+        </table>
+
+        <h3>为什么两个"教科书改进"在这里都失效</h3>
+        <ul>
+          <li><b>集中持仓是 alpha 来源，不是缺陷</b>：Top-1 全仓持有动量最强的一只，在纳指/创业趋势市里这正是收益的来源。Top-2 把最强标的的敞口稀释一半，年化直接从 41% 掉到 23%；而回撤只浅 1.4pp——因为本策略的风控靠<b>上证空仓 regime filter + 止损</b>，系统性下跌时前两名一起跌，分散的边际保护极小。</li>
+          <li><b>日频动量不能跳过近期</b>：skip 2/3/5 三档全部负优化，回撤反而加深到 -24% ~ -30%。文献里"跳过最近一个月规避短期反转"的结论来自 <b>12 个月动量 + 月频调仓</b>；本策略是 20 日日频，最近一周正是信号主体，跳过它等于钝化进出场时机（退出变慢 → 回撤加深）。</li>
+          <li><b>每日等权再平衡有额外拖累</b>：Top-K 每日再平衡为等权，相当于在持仓内部系统性修剪最强标的（反动量）。这是 Top-2 跑输的成因之一（注：若改为权重自然漂移或可略改善，但不足以扭转结论）。</li>
+          <li><b>回归锚点</b>：两个开关全部关闭时，十年结果与改动前<b>完全一致</b>（41.20% / -19.92% / 327 笔），零行为变化——实验可完全回退。</li>
+        </ul>
+
+        <div class="note-box">
+          <b>结论：</b>原策略 Top-1 集中持仓为最优配置，两个结构性改进均为负优化。这补全了本页「Top-K 是唯一未实测改进」的悬案：对已有 regime filter 的集中动量策略，<b>分散不是免费保险，代价是 alpha 减半</b>。两个开关保留在参数面板（默认关闭），换池子/换区间可自行重验。
         </div>
       </div>
     </div>

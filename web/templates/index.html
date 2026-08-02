@@ -50,6 +50,20 @@
         </div>
 
         <div class="param-group">
+          <label class="group-label" title="1=Top-1全仓(原策略); 2/3=持有动量最强的K只并每日等权再平衡">持仓数 Top-K</label>
+          <select id="top_k">
+            <option value="1" selected>1 (全仓)</option>
+            <option value="2">2 等权</option>
+            <option value="3">3 等权</option>
+          </select>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="排名动量跳过最近N天以规避短期反转, 0=关闭">动量跳过天</label>
+          <input id="mom_skip" type="number" value="0" min="0" max="10">
+        </div>
+
+        <div class="param-group">
           <label class="group-label">绝对动量门</label>
           <div class="toggle-row">
             <label class="toggle">

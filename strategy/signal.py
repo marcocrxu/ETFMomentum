@@ -32,6 +32,8 @@ class SignalConfig:
     sh_cash_exempt: bool = False   # 上证空仓仅对A股标的生效 (豁免纳指/黄金)
     multi_mom: bool = False        # 多周期动量: 排名分 = 3×mom10+2×mom20+1×mom60
     fip_tiebreak: bool = False     # FIP动量质量: 动量差<min_gap时选上涨路径更平滑者
+    top_k: int = 1                 # 持仓数: 1=Top-1全仓(原行为); >1=Top-K等权轮动(独立引擎)
+    mom_skip: int = 0              # 排名动量跳过最近N天(短期反转规避), 0=关闭
 
 
 # 防御资产池: 空仓/防御信号触发时的候选持有标的
@@ -39,6 +41,214 @@ DEFENSIVE_NAMES = {"黄金", "红利低波", "5年国债"}
 
 # 上证空仓豁免名单: 与A股低相关的资产, 豁免模式下不受上证空仓过滤
 SH_CASH_EXEMPT_NAMES = {"纳指", "黄金"}
+
+
+def _compute_signals_topk(
+    cfg: SignalConfig,
+    etf_names: List[str],
+    price_mat: np.ndarray,
+    mom20_mat: np.ndarray,
+    mom10_mat: np.ndarray,
+    sh_mom: np.ndarray,
+    cyb_idx_p: np.ndarray,
+    sh_idx_p: np.ndarray,
+    n_days: int,
+) -> tuple:
+    """Top-K 等权轮动引擎 (top_k>1 时独立于 Top-1 路径)
+
+    持有动量得分最强的 K 个标的, 每日再平衡为等权, 空余仓位持现金。
+    复用上证空仓/恐慌抄底/止损/加速止盈/确认入场规则;
+    不支持防御切换/豁免/多周期/风险调整/FIP (均实测负优化, 不与 Top-K 组合)。
+    返回与 Top-1 相同的 (actions, nav, nav_log)。
+    """
+    n_etfs = len(etf_names)
+    K = min(cfg.top_k, n_etfs)
+
+    # ── 加速止盈阈值 (与 Top-1 相同的 expanding 校准) ──
+    accel_th_mat = np.full((n_etfs, n_days), np.nan)
+    for i in range(n_etfs):
+        s = pd.Series(mom10_mat[i])
+        if cfg.method == "percentile":
+            th = s.expanding(min_periods=60).quantile((100 - cfg.method_pct) / 100.0)
+        elif cfg.method == "ewma_z":
+            e = s.ewm(halflife=cfg.method_halflife, min_periods=60)
+            th = e.mean() + cfg.accel_sigma * np.sqrt(e.var())
+        else:
+            ex = s.expanding(min_periods=60)
+            th = ex.mean() + cfg.accel_sigma * ex.std()
+        accel_th_mat[i] = th.shift(1).values
+
+    def calc_threshold(arr, t, sigma_val):
+        valid = arr[:t][~np.isnan(arr[:t])]
+        if len(valid) < 60: return None
+        if cfg.method == "percentile":
+            return np.percentile(valid, cfg.method_pct)
+        elif cfg.method == "ewma_z":
+            s = pd.Series(arr[:t]).ewm(halflife=cfg.method_halflife, min_periods=60).mean().iloc[-1]
+            v = pd.Series(arr[:t]).ewm(halflife=cfg.method_halflife, min_periods=60).var().iloc[-1]
+            return float(s + sigma_val * np.sqrt(v)) if not np.isnan(s) and not np.isnan(v) else None
+        else:
+            return valid.mean() + sigma_val * valid.std()
+
+    sw_ = 10
+    mom10_cyb = np.full(n_days, np.nan)
+    mom10_sh_idx = np.full(n_days, np.nan)
+    mom10_cyb[sw_:] = (cyb_idx_p[sw_:] / cyb_idx_p[:-sw_] - 1) * 100
+    mom10_sh_idx[sw_:] = (sh_idx_p[sw_:] / sh_idx_p[:-sw_] - 1) * 100
+    ma200_cyb = pd.Series(cyb_idx_p).rolling(200).mean().values
+    ma200_sh = pd.Series(sh_idx_p).rolling(200).mean().values
+
+    # ── 有效起点 (与 Top-1 一致) ──
+    vs = 0
+    valid_cnt = np.sum(~np.isnan(mom20_mat), axis=0)
+    cand = np.where(valid_cnt >= min(2, n_etfs))[0]
+    if len(cand) > 0: vs = cand[0]
+    fv_sh = np.where(~np.isnan(sh_mom))[0]
+    if len(fv_sh) > 0: vs = max(vs, fv_sh[0])
+
+    # ── 模拟 ──
+    nav = 1.0
+    w = np.zeros(n_etfs)                 # 当前权重 (每日漂移)
+    entry_day = np.full(n_etfs, -1)
+    entry_px = np.full(n_etfs, np.nan)
+    streak = 0; top1_prev = -1
+    crash_held_until = -1
+    sh_cash_block_until = -1
+    accel_block_idx = -1; accel_block_until = -1
+    actions = []
+    nav_log = []
+    cost_rate = cfg.commission + cfg.slippage
+
+    for t in range(vs, n_days):
+        # ── 用当前权重更新净值并漂移 ──
+        prev_p = price_mat[:, max(0, t - 1)]
+        curr_p = price_mat[:, t]
+        held_mask = w > 1e-9
+        if held_mask.any():
+            ok = held_mask & ~np.isnan(prev_p) & ~np.isnan(curr_p) & (prev_p > 0)
+            pr = np.zeros(n_etfs)
+            pr[ok] = curr_p[ok] / prev_p[ok] - 1
+            port_ret = float(np.sum(w * pr))
+            nav *= (1 + port_ret)
+            grow = np.ones(n_etfs); grow[ok] = curr_p[ok] / prev_p[ok]
+            if 1 + port_ret > 0:
+                w = w * grow / (1 + port_ret)
+
+        ms = mom20_mat[:, t]; vm = ~np.isnan(ms)
+        if not vm.any() or np.isnan(sh_mom[t]):
+            continue
+
+        score = np.where(vm, ms, np.nan)
+        if accel_block_idx >= 0 and t < accel_block_until:
+            score[accel_block_idx] = np.nan
+        sv = ~np.isnan(score)
+
+        # top1 与 streak (用于入场/切换确认)
+        ti = int(np.argmax(np.where(sv, score, -np.inf))) if sv.any() else -1
+        streak = streak + 1 if ti != top1_prev else 0
+        top1_prev = ti
+
+        # ── 上证空仓 ──
+        sc = (sh_mom[t] > np.nanmax(ms)) if cfg.sh_cash else False
+        if sc and cfg.sh_cash_cooldown > 0:
+            sh_cash_block_until = t + cfg.sh_cash_cooldown
+
+        # ── 恐慌抄底 ──
+        crash_now = False
+        if t >= 252:
+            th_sh = calc_threshold(mom10_sh_idx, t, cfg.crash_sigma)
+            if th_sh is not None and mom10_sh_idx[t] < th_sh and sh_idx_p[t] < ma200_sh[t]:
+                crash_now = True
+            if not crash_now:
+                th_cyb = calc_threshold(mom10_cyb, t, cfg.crash_sigma)
+                if th_cyb is not None and mom10_cyb[t] < th_cyb and cyb_idx_p[t] < ma200_cyb[t]:
+                    crash_now = True
+
+        held_idx = [i for i in range(n_etfs) if w[i] > 1e-9]
+        buys = []; sells = []
+        cyb_pool_idx = etf_names.index("创业") if "创业" in etf_names else -1
+
+        if cfg.crash_enabled and crash_now and t >= crash_held_until and cyb_pool_idx >= 0:
+            crash_held_until = t + cfg.crash_lock
+            if cyb_pool_idx not in held_idx:
+                if len(held_idx) >= K:
+                    worst = min(held_idx, key=lambda i: score[i] if not np.isnan(score[i]) else -np.inf)
+                    sells.append((worst, "恐慌换仓")); held_idx.remove(worst)
+                buys.append((cyb_pool_idx, "恐慌抄底")); held_idx.append(cyb_pool_idx)
+        elif sc:
+            for i in held_idx: sells.append((i, "上证空仓"))
+            held_idx = []
+        elif cfg.abs_mom_enabled and sv.any() and np.nanmax(ms) < 0 and t >= crash_held_until:
+            for i in held_idx: sells.append((i, "绝对动量空仓"))
+            held_idx = []
+        else:
+            # ── 正常轮动: 目标集 = 得分前 K ──
+            order = np.argsort(np.where(sv, score, -np.inf))[::-1]
+            target = [int(i) for i in order[:K] if sv[i]]
+            bought = set()
+
+            # 1) 逐个检查持仓: 止损 / 加速止盈 / 正常切换
+            for i in list(held_idx):
+                if i in target: continue
+                px_now = price_mat[i, t]
+                pnl = (px_now / entry_px[i] - 1) * 100 if (entry_px[i] > 0 and not np.isnan(px_now)) else 0.0
+                hd = t - entry_day[i]
+                reason = None
+                if t >= crash_held_until and pnl <= cfg.stop_loss:
+                    reason = "止损"
+                elif (not np.isnan(accel_th_mat[i, t])
+                        and mom10_mat[i, t] > accel_th_mat[i, t]):
+                    reason = "加速止盈"
+                elif t >= crash_held_until and streak >= cfg.confirm_days and not np.isnan(score[i]):
+                    j = next((x for x in target if x not in held_idx and x not in bought), None)
+                    if j is not None:
+                        gap = score[j] - score[i]
+                        if gap >= cfg.exception_gap:
+                            reason = ">3%%切换"
+                        elif hd >= cfg.min_hold and gap >= cfg.min_gap:
+                            reason = "正常切换"
+                if reason is None: continue
+                sells.append((i, reason)); held_idx.remove(i)
+                if reason == "加速止盈" and cfg.accel_cooldown > 0:
+                    accel_block_idx = i; accel_block_until = t + cfg.accel_cooldown
+                j = next((x for x in target if x not in held_idx and x not in bought), None)
+                if j is not None and len(held_idx) < K:
+                    bought.add(j); buys.append((j, reason)); held_idx.append(j)
+
+            # 2) 空余仓位入场 (空仓冷却期内禁止)
+            if t >= sh_cash_block_until:
+                for j in target:
+                    if len(held_idx) >= K: break
+                    if j in held_idx or j in bought: continue
+                    lm = ms[j]
+                    strong = not np.isnan(lm) and lm >= cfg.cash_skip_gt
+                    if strong or streak >= cfg.confirm_days:
+                        bought.add(j)
+                        buys.append((j, ">3%%即买" if strong else "确认买入"))
+                        held_idx.append(j)
+
+        # ── 执行: 重建等权, 按换手率扣成本 ──
+        if sells or buys:
+            new_w = np.zeros(n_etfs)
+            if held_idx:
+                for i in held_idx: new_w[i] = 1.0 / len(held_idx)
+            turnover = float(np.sum(np.abs(new_w - w)))
+            if turnover > 0:
+                nav *= (1 - cost_rate * turnover)
+            for i, reason in sells:
+                actions.append((t, i, -1, reason))
+                entry_day[i] = -1; entry_px[i] = np.nan
+            for j, reason in buys:
+                actions.append((t, -1, j, reason))
+                entry_day[j] = t; entry_px[j] = price_mat[j, t]
+            w = new_w
+
+        nav_log.append(nav)
+
+    # 期末平仓
+    if w.any():
+        nav *= (1 - cost_rate * float(np.sum(w)))
+    return actions, nav, nav_log
 
 
 def compute_signals(
@@ -57,6 +267,10 @@ def compute_signals(
     action_type: 'BUY'|'SELL'|'CASH'|'HOLD'
     target_etf_idx: 0..n_etfs-1 or -1 for cash
     """
+
+    if cfg.top_k > 1:
+        return _compute_signals_topk(cfg, etf_names, price_mat, mom20_mat,
+                                     mom10_mat, sh_mom, cyb_idx_p, sh_idx_p, n_days)
 
     # ── 加速止盈阈值 (可插拔校准) ──
     # expanding 逐日计算, shift(1) 保证 t 日阈值只用 t-1 及之前的数据

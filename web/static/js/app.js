@@ -112,6 +112,8 @@ function collectParams() {
     sh_cash_cooldown: +document.getElementById('sh_cash_cooldown').value || 0,
     multi_mom_on: document.getElementById('multi_mom_on').checked,
     fip_on: document.getElementById('fip_on').checked,
+    top_k: +document.getElementById('top_k').value || 1,
+    mom_skip: +document.getElementById('mom_skip').value || 0,
   };
 }
 
@@ -346,6 +348,8 @@ function applyConfig(cfg) {
   setChecked('fip_on', cfg.fip_on);
   setVal('accel_cooldown', cfg.accel_cooldown);
   setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
+  setVal('top_k', cfg.top_k);
+  setVal('mom_skip', cfg.mom_skip);
   setVal('accel_sigma', cfg.accel_sigma);
   setVal('crash_sigma', cfg.crash_sigma);
   setVal('crash_lock', cfg.crash_lock);

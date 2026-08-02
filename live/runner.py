@@ -76,12 +76,16 @@ class LiveRunner:
             cyb_p[-1] = live["创业指"]
 
         # 动量
-        def momentum(arr, w):
+        def momentum(arr, w, s=0):
             m = np.full(n, np.nan)
-            m[w:] = (arr[w:] / arr[:-w] - 1) * 100
+            if s <= 0:
+                m[w:] = (arr[w:] / arr[:-w] - 1) * 100
+            else:
+                m[w+s:] = (arr[w:n-s] / arr[:n-w-s] - 1) * 100
             return m
 
-        mom20_mat = np.array([momentum(price_mat[i], 20) for i in range(len(etf_names))])
+        _skip = self.cfg.mom_skip
+        mom20_mat = np.array([momentum(price_mat[i], 20, _skip) for i in range(len(etf_names))])
         mom10_mat = np.array([momentum(price_mat[i], 10) for i in range(len(etf_names))])
         sh_mom = momentum(sh_price, 20)
 

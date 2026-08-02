@@ -82,12 +82,15 @@ def run_backtest(params):
         sh_cash_cooldown=int(params.get("sh_cash_cooldown", 3)),
         multi_mom=params.get("multi_mom_on", False),
         fip_tiebreak=params.get("fip_on", False),
+        top_k=int(params.get("top_k", 1)),
+        mom_skip=int(params.get("mom_skip", 0)),
     )
 
-    # 数据: 起始日往前拉预热天数 (多周期动量需要60日动量, 预热75天)
-    _warmup = mom_period + 15
+    # 数据: 起始日往前拉预热天数 (多周期动量需要60日动量, 预热75天; mom_skip 额外加)
+    _mom_skip = int(params.get("mom_skip", 0))
+    _warmup = mom_period + _mom_skip + 15
     if params.get("multi_mom_on", False):
-        _warmup = max(_warmup, 75)
+        _warmup = max(_warmup, 75 + _mom_skip)
     _bt_start_dt = _dt.datetime.strptime(bt_start.replace("-",""), "%Y%m%d")
     _fetch_start = (_bt_start_dt - _dt.timedelta(days=_warmup)).strftime("%Y%m%d")
     dfs = FEED.get_dataframe(codes, _fetch_start, bt_end.replace("-",""))
@@ -125,9 +128,15 @@ def run_backtest(params):
     cyb_p = _build_prices("399006.SZ") if "399006.SZ" in dfs else np.full(n_full, np.nan)
     price_mat = np.array([prices[nm] for nm in etf_names])
 
-    def mom(arr, w):
-        m = np.full(n_full, np.nan); m[w:] = (arr[w:] / arr[:-w] - 1) * 100; return m
-    mom20_mat = np.array([mom(prices[nm], mom_period) for nm in etf_names])
+    def mom(arr, w, s=0):
+        m = np.full(n_full, np.nan)
+        if s <= 0:
+            m[w:] = (arr[w:] / arr[:-w] - 1) * 100
+        else:
+            # 跳过最近 s 天: mom[t] = price[t-s]/price[t-s-w] - 1
+            m[w+s:] = (arr[w:n_full-s] / arr[:n_full-w-s] - 1) * 100
+        return m
+    mom20_mat = np.array([mom(prices[nm], mom_period, _mom_skip) for nm in etf_names])
     mom10_mat = np.array([mom(prices[nm], max(5, mom_period//2)) for nm in etf_names])
     sh_mom = mom(sh_price, mom_period)
 
