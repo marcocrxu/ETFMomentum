@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>策略分析 · ETF 动量轮动</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    .analysis-card { margin-bottom: 20px; }
+    .analysis-body { padding: 18px; }
+    .analysis-body h3 {
+      font-size: 15px;
+      color: var(--accent);
+      margin: 18px 0 10px;
+    }
+    .analysis-body h3:first-child { margin-top: 0; }
+    .analysis-body p, .analysis-body li {
+      font-size: 13px;
+      color: #c8ccd8;
+      line-height: 1.8;
+    }
+    .analysis-body ul { padding-left: 20px; }
+    .analysis-body table { min-width: 0; margin: 10px 0; }
+    .analysis-body th, .analysis-body td { text-align: left; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-warn { background: rgba(255,152,0,.15); color: #ff9800; border: 1px solid rgba(255,152,0,.3); }
+    .badge-p1 { background: rgba(233,69,96,.15); color: var(--accent-2); border: 1px solid rgba(233,69,96,.3); }
+    .badge-p2 { background: rgba(33,150,243,.15); color: #64b5f6; border: 1px solid rgba(33,150,243,.3); }
+    .badge-p3 { background: rgba(139,146,168,.15); color: var(--muted); border: 1px solid rgba(139,146,168,.3); }
+    .reco-item {
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .reco-item .reco-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .reco-item .reco-why { font-size: 13px; color: #c8ccd8; line-height: 1.7; margin-bottom: 6px; }
+    .reco-item .reco-how { font-size: 12px; color: var(--muted); }
+    .reco-item .reco-how code {
+      background: var(--surface-3);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+      color: var(--accent-2);
+    }
+    .note-box {
+      padding: 12px 14px;
+      background: rgba(255,152,0,.08);
+      border: 1px solid rgba(255,152,0,.25);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #ffb74d;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+    .num-pos { color: var(--green); font-weight: 600; }
+    .num-neg { color: var(--red); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <header class="page-header">
+      <h1>🔬 动量策略分析</h1>
+      <p class="subtitle">经典动量策略对比与改进方向调研</p>
+    </header>
+
+    <nav class="page-nav">
+      <a href="/">📊 回测</a>
+      <a href="/analysis" class="active">🔬 策略分析</a>
+    </nav>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>📚 经典动量轮动策略对比</h2></div>
+      <div class="analysis-body">
+        <div class="note-box">
+          ⚠️ 数据说明：本次调研的联网交叉验证因 API 配额问题大面积失败，仅 GEM 一项有单来源抓取数据（未验证）。其余为策略文献中的公开规则（常识级），数字请自行复核。
+        </div>
+        <table>
+          <thead>
+            <tr><th>策略</th><th>信号</th><th>调仓频率</th><th>持仓数</th><th>下跌保护</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>GEM</b> (Antonacci)</td>
+              <td>12个月收益：相对动量 + 绝对动量</td>
+              <td>月频</td>
+              <td>全仓 1 只</td>
+              <td>绝对动量为负 → 切债券</td>
+            </tr>
+            <tr>
+              <td><b>DAA</b> (Keller)</td>
+              <td>多资产 1/3/6/12月动量加权</td>
+              <td>月频</td>
+              <td>Top-3 等权</td>
+              <td>按"坏资产"数量比例切防御资产</td>
+            </tr>
+            <tr>
+              <td><b>VAA</b> (Keller)</td>
+              <td>风险调整动量（动量/波动率）</td>
+              <td>月频</td>
+              <td>Top-4 等权</td>
+              <td>有坏资产 → 全仓防御</td>
+            </tr>
+            <tr>
+              <td><b>TSMOM</b> (Moskowitz)</td>
+              <td>12个月收益符号（时序动量）</td>
+              <td>月频</td>
+              <td>多资产独立信号</td>
+              <td>负动量做空/空仓 + 波动率缩放</td>
+            </tr>
+            <tr>
+              <td><b>本策略</b></td>
+              <td>20日动量排名（相对动量）</td>
+              <td>日频</td>
+              <td>全仓 1 只</td>
+              <td>上证空仓过滤 + 止损 + 加速止盈</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>本策略本质上是 GEM 的<b>高频激进版</b>：日频替代月频、20日替代12个月、空仓替代切防御资产。</p>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>📈 GEM 实测数据 <span class="badge badge-warn">单来源 · 未验证</span></h2></div>
+      <div class="analysis-body">
+        <ul>
+          <li>单一 <b>12 个月</b>总收益回看期，同时用于排名和绝对动量过滤</li>
+          <li>永远 <b>100% 全仓单一资产</b>，<b>月度</b>调仓</li>
+          <li>美股 12 个月收益跑输 T-bill → 切到综合债券</li>
+          <li>绝对动量为正时：SPY（美股）vs VEU（非美股）二选一</li>
+          <li>第三方回测 1986-02 ~ 2026-07：CAGR <span class="num-pos">12.3%</span>、Sharpe 0.98、波动率 14.2%、最大回撤 <span class="num-neg">-33.7%</span>（含 10bps 单边成本）</li>
+        </ul>
+        <p style="color:var(--muted);font-size:12px">来源：bestfolio.app/strategies/gem（2026-07 抓取，未经交叉验证）</p>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🛠 改进建议（按优先级）</h2></div>
+      <div class="analysis-body">
+
+        <div class="reco-item">
+          <div class="reco-title">1. 用"每标的绝对动量 + 防御资产"替代"上证空仓" <span class="badge badge-p1">P0</span></div>
+          <div class="reco-why">
+            GEM/DAA/VAA 的核心思想：不是用某个外部指数当总开关，而是<b>每个标的自己带趋势过滤</b>——自身动量为负就不持有它，即使它是池里相对最强。
+            然后不是空仓吃 0 收益，而是<b>切到防御资产</b>（黄金、红利低波、债券 ETF）。
+            普跌行情里，空仓只能保命，切防御资产还能赚钱。
+          </div>
+          <div class="reco-how">落地：<code>signal.py</code> 增加 per-asset 绝对动量判断；防御标的设为目标资产而非 -1 空仓。改动量中等，预期收益最大。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">2. 动量排名除以波动率（Sharpe 动量） <span class="badge badge-p1">P0</span></div>
+          <div class="reco-why">
+            VAA 的做法：<code>score = 动量 / 波动率</code>。裸 20 日涨幅排名天然偏好高波动标的（创业永远比红利低波排名高），换成风险调整后能明显降低回撤。
+          </div>
+          <div class="reco-how">落地：<code>score = mom20 / std(日收益, 20)</code>，一行代码。建议先做这个验证效果。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">3. Top-K 持仓替代 Top-1 <span class="badge badge-p2">P1</span></div>
+          <div class="reco-why">
+            DAA 持 Top-3 等权、VAA 持 Top-4。只持 1 只要吃单标的黑天鹅和全部切换冲击；Top-2/Top-3 等权通常<b>回撤显著下降、Calmar 上升</b>，代价是收益略降。
+          </div>
+          <div class="reco-how">落地：<code>signal.py</code> 的 <code>pos</code> 从单个 int 改为权重 dict，架构改动较大。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">4. 多周期动量组合 <span class="badge badge-p2">P1</span></div>
+          <div class="reco-why">
+            单一 20 日周期很脆弱，换参数结果就变。经典做法是 1/3/6/12 月多周期加权或投票，降低对单一参数的敏感度。
+          </div>
+          <div class="reco-how">落地：<code>score = 0.5×mom20 + 0.3×mom60 + 0.2×mom120</code>，改动小。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">5. 动量崩溃防护系统化 <span class="badge badge-p3">P2</span></div>
+          <div class="reco-why">
+            恐慌抄底本质上是一种崩溃应对，但它是左侧加仓。经典防护（Daniel &amp; Moskowitz）：深跌后波动率飙升 + 急反弹时，弱资产反弹最猛，按相对动量追进去容易接飞刀——此 regime 下应<b>临时切防御或暂停轮动</b>。
+          </div>
+          <div class="reco-how">落地：检测"市场 N 日回撤超 X% + 波动率骤升"，触发后冻结切换 M 天。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">6. 高波动标的仓位上限 <span class="badge badge-p3">P2</span></div>
+          <div class="reco-why">
+            创业/科创50 这类高波动标的设仓位上限（如 70%），其余放防御资产。简版波动率目标，拉平各标的风险贡献。
+          </div>
+          <div class="reco-how">落地：买入时按标的波动率分档限制仓位。</div>
+        </div>
+
+        <div class="reco-item">
+          <div class="reco-title">7. 动量质量做 tie-breaker（frog in the pan） <span class="badge badge-p3">P2</span></div>
+          <div class="reco-why">
+            动量接近时，选"上涨路径平滑"的（上涨天数占比高、单日涨幅均匀），而不是"几根大阳线拉出来"的。平滑动量持续性更好。
+          </div>
+          <div class="reco-how">落地：动量差小于阈值时，比较 20 日内上涨天数占比。</div>
+        </div>
+
+        <p style="margin-top:14px"><b>建议落地顺序：</b>#2（一行代码）→ #1（中等改动、预期收益最大）→ #3（架构改动）→ #4 → #5/#6/#7。每个都以 ablation 开关形式加入，逐一对比十年回测。</p>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>💰 成本敏感性实测（2016-07 ~ 2026-07，纳指/黄金/创业）</h2></div>
+      <div class="analysis-body">
+        <table>
+          <thead>
+            <tr><th>单边滑点</th><th>累计收益</th><th>年化收益</th><th>最大回撤</th><th>Calmar</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>0%</td><td class="num-pos">3253%</td><td>43.69%</td><td class="num-neg">-22.35%</td><td>1.95</td></tr>
+            <tr><td>0.05%</td><td class="num-pos">2655%</td><td>40.80%</td><td class="num-neg">-22.70%</td><td>1.80</td></tr>
+            <tr><td>0.1%</td><td class="num-pos">2163%</td><td>37.97%</td><td class="num-neg">-23.05%</td><td>1.65</td></tr>
+            <tr><td>0.2%</td><td class="num-pos">1427%</td><td>32.48%</td><td class="num-neg">-23.74%</td><td>1.37</td></tr>
+          </tbody>
+        </table>
+        <p>十年 290 次交易，滑点对长期复利的影响显著。小资金实际冲击成本接近 0，建议回测按 0.05% 滑点评估更诚实。</p>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

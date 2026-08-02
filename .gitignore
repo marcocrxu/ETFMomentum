@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# 本地私密配置（含 Tushare token）
+web/config_local.py
+
+# 本地数据缓存
+cache/
+*.csv.gz
