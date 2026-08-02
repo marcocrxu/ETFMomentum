@@ -19,6 +19,7 @@ class LiveRunner:
         self.tencent_map = {
             "创业": "s_sz159915", "纳指": "s_sh513100",
             "黄金": "s_sh518880", "上证": "s_sh000001",
+            "创业指": "s_sz399006",
         }
 
     def check(self) -> dict:
@@ -38,6 +39,12 @@ class LiveRunner:
             return {"error": "数据加载失败"}
 
         all_dates = sorted(set().union(*[set(df["trade_date"]) for df in dfs.values()]))
+
+        # 盘中运行时缓存最后一行是昨天: 为今天追加新行
+        # (此前用实时价直接覆盖最后一行, 导致昨收从序列中消失、动量窗口错位)
+        today_ts = pd.Timestamp(today)
+        if not all_dates or all_dates[-1] < today_ts:
+            all_dates.append(today_ts)
         n = len(all_dates)
 
         # 构建价格数组
@@ -49,22 +56,24 @@ class LiveRunner:
         sh_s = dfs["000001.SH"].set_index("trade_date")["close"]
         sh_price = np.array([sh_s.get(d, np.nan) for d in all_dates])
 
-        cyb_p = sh_p = np.full(n, np.nan)
+        cyb_p = np.full(n, np.nan)
         if "399006.SZ" in dfs:
             s = dfs["399006.SZ"].set_index("trade_date")["close"]
             cyb_p = np.array([s.get(d, np.nan) for d in all_dates])
-        if "000001.SH" in dfs:
-            sh_p = np.array([sh_s.get(d, np.nan) for d in all_dates])
+        sh_p = sh_price.copy()
 
-        price_mat = np.array([prices.get(n, np.full(n, np.nan)) for n in etf_names])
+        price_mat = np.array([prices.get(nm, np.full(n, np.nan)) for nm in etf_names])
 
-        # 实时价格（补到数组最后）
+        # 实时价格写入今日行
         live = self._get_live_prices()
         for i, name in enumerate(etf_names):
             if name in live and live[name] > 0:
                 price_mat[i, -1] = live[name]
         if "上证" in live and live["上证"] > 0:
             sh_price[-1] = live["上证"]
+            sh_p[-1] = live["上证"]
+        if "创业指" in live and live["创业指"] > 0:
+            cyb_p[-1] = live["创业指"]
 
         # 动量
         def momentum(arr, w):
@@ -76,30 +85,22 @@ class LiveRunner:
         mom10_mat = np.array([momentum(price_mat[i], 10) for i in range(len(etf_names))])
         sh_mom = momentum(sh_price, 20)
 
-        # 用实时价补最后一刻动量
-        for i in range(len(etf_names)):
-            if n >= 21 and price_mat[i, -1] > 0 and price_mat[i, -21] > 0:
-                mom20_mat[i, -1] = (price_mat[i, -1] / price_mat[i, -21] - 1) * 100
-            if n >= 11 and price_mat[i, -1] > 0 and price_mat[i, -11] > 0:
-                mom10_mat[i, -1] = (price_mat[i, -1] / price_mat[i, -11] - 1) * 100
-        if n >= 21 and sh_price[-1] > 0 and sh_price[-21] > 0:
-            sh_mom[-1] = (sh_price[-1] / sh_price[-21] - 1) * 100
-
         # 调用共享信号函数
-        actions, _ = compute_signals(
+        actions, _, _ = compute_signals(
             self.cfg, etf_names, price_mat, mom20_mat, mom10_mat,
             sh_mom, cyb_p, sh_p, n
         )
 
-        # 取最后一个操作
+        # 只有发生在今日(最后一行)的 action 才是今天的信号
+        # (此前直接取 actions[-1], 会把几天前的历史操作当成今日信号推送)
         last_action = actions[-1] if actions else None
         signal = "HOLD"
         target = None
         reason = ""
-        if last_action:
+        if last_action and last_action[0] == n - 1:
             _, old_p, new_p, reason = last_action
             if new_p >= 0: signal = "BUY"; target = etf_names[new_p]
-            elif old_p >= 0 and new_p == -1: signal = "CASH"
+            elif old_p >= 0: signal = "CASH"
 
         # 持仓盈亏
         pnl = 0; hold_days = 0; position = ""
@@ -120,6 +121,7 @@ class LiveRunner:
             "date": today,
             "signal": signal, "target": target, "reason": reason,
             "position": position, "pnl": round(pnl, 2), "hold_days": hold_days,
+            "sh_momentum": round(float(sh_mom[-1]), 2) if not np.isnan(sh_mom[-1]) else 0,
             "momentums": {
                 name: round(mom20_mat[i, -1], 2) if not np.isnan(mom20_mat[i, -1]) else 0
                 for i, name in enumerate(etf_names)
@@ -140,7 +142,7 @@ class LiveRunner:
             icon = {0: "🥇", 1: "🥈", 2: "🥉"}.get(i, "")
             holder = " ← 持有" if name == result["position"] else ""
             lines.append(f"{icon} {arrow} **{name}**: {mom:+.2f}%{holder}")
-        lines.append(f"    📉 上证指数: {result['momentums'].get('上证指数', 0):+.2f}%")
+        lines.append(f"    📉 上证指数: {result.get('sh_momentum', 0):+.2f}%")
 
         if result["position"]:
             lines.append(f"\n💼 持仓: {result['position']} | 盈亏{result['pnl']:+.1f}% | 第{result['hold_days']}天")
@@ -201,7 +203,7 @@ class LiveRunner:
             return {}
         tc_to = {v: k for k, v in self.tencent_map.items()}
         tc_names = {"创业板ETF易方达": "创业", "纳指ETF": "纳指", "纳指ETF国泰": "纳指",
-                    "黄金ETF华安": "黄金", "上证指数": "上证"}
+                    "黄金ETF华安": "黄金", "上证指数": "上证", "创业板指": "创业指"}
         result = {}
         for line in resp.text.strip().split("\n"):
             parts = line.split("~")

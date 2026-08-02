@@ -91,7 +91,8 @@ class TushareFeed(DataFeed):
         df_new["trade_date"] = pd.to_datetime(df_new["trade_date"], format="%Y%m%d")
         df_new = df_new.sort_values("trade_date").reset_index(drop=True)
 
-        # 复权因子 (指数等无 fund_adj 的填 1.0)
+        # 复权因子: 缺失留 NaN, 由 _load_or_fetch 合并后 ffill 前值
+        # (此前缺口行填 1.0 会让 latest_adj 失真, 整段历史被等比放大出现假接缝)
         if not code.startswith("0"):
             try:
                 adj = self.pro.fund_adj(ts_code=code, start_date=start, end_date=end)
@@ -102,8 +103,7 @@ class TushareFeed(DataFeed):
             except Exception:
                 pass
         if "adj_factor" not in df_new.columns:
-            df_new["adj_factor"] = 1.0
-        df_new["adj_factor"] = df_new["adj_factor"].fillna(1.0)
+            df_new["adj_factor"] = np.nan
         return df_new
 
     # ── 主加载逻辑: 增量更新 ──
@@ -118,8 +118,9 @@ class TushareFeed(DataFeed):
             fetch_start = start                     # 无缓存: 全量拉取
         else:
             cache_max = df["trade_date"].max()
-            if cache_max < end_ts - pd.Timedelta(days=3):
-                fetch_start = (cache_max + pd.Timedelta(days=1)).strftime("%Y%m%d")  # 只拉缺口
+            if cache_max < end_ts:
+                # 带4天重叠回补: 让上次临时补的因子/价格被官方数据覆盖修正
+                fetch_start = (cache_max - pd.Timedelta(days=4)).strftime("%Y%m%d")
 
         if fetch_start is not None:
             df_new = self._fetch_remote(code, fetch_start, end)
@@ -133,6 +134,8 @@ class TushareFeed(DataFeed):
                 else:
                     df = df_new
                     print("[DataFeed] %s 全量拉取 %s→%s (%d行)" % (code, fetch_start, end, len(df)))
+                # 因子缺口继承前值 (指数全 NaN 则统一 1.0)
+                df["adj_factor"] = df["adj_factor"].ffill().bfill().fillna(1.0)
                 self._atomic_write(self._canonical_path(code), df)
                 self._migrate_legacy()
             elif df is None:

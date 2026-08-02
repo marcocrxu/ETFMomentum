@@ -50,12 +50,18 @@
     }
     .reco-item .reco-why { font-size: 13px; color: #c8ccd8; line-height: 1.7; margin-bottom: 6px; }
     .reco-item .reco-how { font-size: 12px; color: var(--muted); }
-    .reco-item .reco-how code {
+    .reco-item .reco-how code,
+    .analysis-body code {
       background: var(--surface-3);
       padding: 1px 5px;
       border-radius: 3px;
       font-size: 11px;
       color: var(--accent-2);
+    }
+    .review-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 14px;
     }
     .note-box {
       padding: 12px 14px;
@@ -146,6 +152,9 @@
     <div class="card analysis-card">
       <div class="card-header"><h2>🧪 Ablation 实测结果（2016-07 ~ 2026-07，十年，池：纳指/黄金/创业/5年国债）</h2></div>
       <div class="analysis-body">
+        <div class="note-box">
+          ⚠️ <b>本表数字产生于加速止盈前视偏差修复之前（2026-08-03 修复）</b>，整体结论大多仍成立，但「止盈冷却」的判定已被修复翻转。修复后全套复跑见页末「独立代码审查」卡片第 ⑤ 节。
+        </div>
         <div class="win-box">
           <b>最终结论：8 个改进开关测完，只有「空仓冷却」是正资产</b>——它来自真实回撤解剖，不是教科书标准件。<b>已以 3 天设为默认配置（2026-08-03 起生效）</b>：平时几乎无感（年化 -0.8pp），灾难时救命（问题区间收益 ×3、回撤 -23% → -18.6%）。
         </div>
@@ -463,6 +472,129 @@
           </tbody>
         </table>
         <p>十年 290 次交易，滑点对长期复利影响显著。小资金实际冲击成本接近 0，建议回测按 0.05% 滑点评估更诚实。</p>
+      </div>
+    </div>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🧾 独立代码审查（Qoder + Cantus）</h2></div>
+      <div class="analysis-body">
+        <p class="review-meta">审查方：Qoder CLI + Cantus 模型 · 2026-08-03 · 方式：通读 signal / feed / bt_runner / live 全部代码，并通过 <code>/api/bt/run</code> 实跑复核本页数字 · 基于 commit <code>06de0d0</code>（行号引用以该 commit 为准）· 修复与 ablation 复跑于同日完成，见 ④⑤ 节</p>
+
+        <h3>① 数字复现：本页报告可信</h3>
+        <table>
+          <thead><tr><th>配置</th><th>本页报告值</th><th>审查实跑值</th><th>判定</th></tr></thead>
+          <tbody>
+            <tr><td>空仓冷却 3 天（默认）</td><td>年化 40.93%</td><td>年化 40.68% / 回撤 -25.65%</td><td><span class="badge badge-pass">复现</span></td></tr>
+            <tr><td>空仓冷却 0（基线）</td><td>年化 41.72% / 回撤 -19.9%</td><td>年化 41.58% / 回撤 -19.92%</td><td><span class="badge badge-pass">复现</span></td></tr>
+          </tbody>
+        </table>
+        <p>偏差 0.1~0.3pp，来自缓存增量更新的正常漂移。另做两组模块归因实测：<b>关闭加速止盈 → 年化 36.23%（模块贡献 +4.5pp）；关闭恐慌抄底 → 34.93%（+5.7pp）</b>。这两个模块是策略的收益引擎——也恰好是下方问题最集中的地方。</p>
+
+        <h3>② 问题清单（按严重度）</h3>
+        <table>
+          <thead><tr><th>级别</th><th>位置</th><th>问题</th><th>影响</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-fail">P0</span><br><span class="badge badge-pass">已修复</span></td>
+              <td><code>signal.py:61-75</code></td>
+              <td>加速止盈阈值用<b>全样本</b> mean+3σ 计算（ewma_z 分支直接取 <code>.iloc[-1]</code> 期末值），属前视偏差；同文件恐慌阈值 <code>calc_threshold</code> 用 <code>arr[:t]</code> expanding 是正确做法，两者不一致</td>
+              <td>止盈贡献的 +4.5pp 年化部分建立在未来数据上，回测系统性高估实盘</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-fail">P0</span><br><span class="badge badge-pass">已修复</span></td>
+              <td><code>live/runner.py:89</code></td>
+              <td><code>actions, _ =</code> 把 3 元组解包成 2 个 → ValueError</td>
+              <td>实盘 runner 每次运行必崩，说明实盘链路从未跑通过</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-fail">P0</span><br><span class="badge badge-pass">已修复</span></td>
+              <td><code>live/runner.py:63-67</code></td>
+              <td>盘中 14:50 运行时缓存最后一行是<b>昨天</b>，实时价直接<b>覆盖</b>该行而非追加新行</td>
+              <td>昨收从序列中消失，动量窗口与 confirm_days 全部错位</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-mixed">P1</span><br><span class="badge badge-pass">已修复</span></td>
+              <td><code>feed.py:106,151</code></td>
+              <td>增量拉取时若 fund_adj 滞后一天，新行因子被 <code>fillna(1.0)</code>，而复权基准 <code>latest_adj</code> 恰取最后一行；异常还被静默吞掉</td>
+              <td>整段历史价格被放大 N 倍，出现假崩盘接缝，毒化实盘信号</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-mixed">P1</span><br><span class="badge badge-pass">已修复</span></td>
+              <td><code>signal.py:223</code></td>
+              <td>恐慌抄底在「创业」不在池时静默 fallback 到 <code>etf_names[0]</code></td>
+              <td>换池 ablation 时会买入任意标的，对照结果失真</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-mixed">P1</span><br><span class="badge badge-pass">已显式化</span></td>
+              <td><code>signal.py:268-271</code></td>
+              <td>止损只存在于 <code>ti != pos</code> 分支：持仓仍是动量第一名时<b>永不止损</b></td>
+              <td>与参数面板「-5% 止损线」语义不符（回撤⑧ 的 -9.79% 部分源于此）；属设计取舍但应显式说明</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-todo">P2</span><br><span class="badge badge-mixed">部分修复</span></td>
+              <td>多处</td>
+              <td>恐慌模块要求窗口内 t≥252，短窗口回测时静默失效（结果依赖起始日）；crash_lock 默认漂移（UI=7 vs dataclass=10）<span class="badge badge-pass">已修</span>；multi_mom / risk_adj 的预热被 <code>_pre_days</code> 切片抵消（窗口前 60 天仍是 NaN）；live 消息「上证指数」键恒为 0<span class="badge badge-pass">已修</span>；live 取 <code>actions[-1]</code> 未校验是否发生在当日<span class="badge badge-pass">已修</span></td>
+              <td>边角正确性 / 可维护性；t≥252 与预热切片两项需重构数据传参，暂留为已知限制</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>③ 方法论评价</h3>
+        <div class="win-box">
+          <b>正面：</b>本页报告罕见地诚实——8 个开关 7 个负结果全公布、承认 20 日是孤峰不是高原、把 2016 震荡定性为"税不是 bug"、拒绝为单一年份拟合震荡检测器。这超过绝大多数回测报告的标准。
+        </div>
+        <ul>
+          <li><b>没有真正的样本外</b>：空仓冷却 3 天从 2015-16 解剖得来，又在包含 2015-16 的同一个十年上验证。建议 2016-21 定参 / 2021-26 验证的 walk-forward。</li>
+          <li><b>选池偏差未讨论</b>：纳指+黄金是 2026 年回望的十年最强资产，41% 年化中相当部分是"选对池"而非轮动 alpha——这是比 20 日孤峰更大的偏差源。建议把创业换成沪深300 重跑对照。</li>
+          <li><b>收益引擎与方法论问题重叠</b>：+4.5pp 的止盈有前视、+5.7pp 的抄底有窗口依赖。"诚实期望 20-35%" 在修复前视并按 0.05% 默认滑点后还应再打折。</li>
+        </ul>
+
+        <h3>④ 修复记录（2026-08-03，已全部落地）</h3>
+        <ul>
+          <li><code>signal.py</code>：加速止盈阈值改 expanding(min_periods=60)+shift(1)，与恐慌阈值同口径，前视消除；恐慌抄底在「创业」缺席时跳过而非买 index 0；止损盲区加代码注释与面板悬浮说明；crash_lock 默认统一为 7。</li>
+          <li><code>feed.py</code>：复权因子缺口改为继承前值（ffill，实测旧行为可造成 <b>-69% 假跌接缝</b>）；增量拉取取消 3 天死区，改为落后即拉并带 4 天重叠回补，临时数据会被官方数据自动覆盖修正。</li>
+          <li><code>live/runner.py</code>：修复 3 元组解包崩溃（此前实盘每次运行必崩）；今日行改为<b>追加</b>而非覆盖昨收；恐慌模块接入创业板指实时行情；仅当日 action 才作为信号推送；上证动量显示修复；变量遮蔽修复。</li>
+          <li>现有缓存体检：513100 拆分点（2022-01，因子 5.0019）复权连续性验证通过，无历史污染。</li>
+        </ul>
+
+        <h3>⑤ 修复后 Ablation 复跑（2026-08-03，同池同窗口，冷却档基线=冷却0）</h3>
+        <table>
+          <thead><tr><th>配置</th><th>修复前（本页原表）</th><th>修复后复跑</th><th>判定</th></tr></thead>
+          <tbody>
+            <tr><td>基线（冷却0）</td><td>41.72%</td><td>41.20% / 回撤 -19.92%</td><td><span class="badge badge-pass">前视溢价仅 -0.4pp</span></td></tr>
+            <tr><td><b>冷却3天（当前默认）</b></td><td>40.93%</td><td>40.38% / 回撤 <span class="num-neg">-25.65%</span></td><td><span class="badge badge-mixed">回撤劣于基线，默认值需重估</span></td></tr>
+            <tr><td>冷却5天</td><td>40.82%</td><td>40.27% / 回撤 <span class="num-pos">-19.91%</span></td><td><span class="badge badge-pass">年化≈冷却3，回撤浅 5.7pp</span></td></tr>
+            <tr><td>冷却10天</td><td>38.19%</td><td>38.17% / -19.92%</td><td><span class="badge badge-mixed">偏长</span></td></tr>
+            <tr><td>绝对动量门</td><td>40.81%</td><td>40.29% / -19.92%</td><td><span class="badge badge-fail">仍无效</span></td></tr>
+            <tr><td>防御切换</td><td>40.07%</td><td>39.91% / -19.88%</td><td><span class="badge badge-fail">仍无效</span></td></tr>
+            <tr><td>Sharpe 动量</td><td>22.64%</td><td>23.28% / -26.98%</td><td><span class="badge badge-fail">仍负优化</span></td></tr>
+            <tr><td>多周期动量</td><td>28.92%</td><td>28.39% / -26.14%</td><td><span class="badge badge-fail">仍负优化</span></td></tr>
+            <tr><td>FIP 动量质量</td><td>36.53%</td><td>36.11% / -19.92%</td><td><span class="badge badge-fail">仍负优化</span></td></tr>
+            <tr><td>豁免纳指黄金</td><td>35.73%</td><td>36.08% / -27.80%</td><td><span class="badge badge-fail">仍负优化</span></td></tr>
+            <tr><td><b>止盈冷却3天</b></td><td>37.18%（判定：分裂）</td><td><span class="num-pos">39.44%</span> / 回撤 <span class="num-pos">-18.05%</span> / Calmar <span class="num-pos">2.19</span></td><td><span class="badge badge-pass">🔄 结论翻转：全场最佳 Calmar</span></td></tr>
+            <tr><td>冷却3 + 止盈冷却3</td><td>—</td><td>38.69% / -23.91%</td><td><span class="badge badge-mixed">两种冷却不叠加</span></td></tr>
+            <tr><td>关加速止盈（冷却3）</td><td>36.23%（审查实测）</td><td>36.23% / -25.50%</td><td><span class="badge badge-pass">模块贡献 +4.2pp；数字与修复前一致=回归锚点 ✓</span></td></tr>
+            <tr><td>关恐慌抄底（冷却3）</td><td>34.93%（审查实测）</td><td>36.07% / -24.79%</td><td><span class="badge badge-pass">模块贡献 +4.3pp</span></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li><b>前视修复的代价意外地小</b>：基线仅 -0.4pp（41.58→41.20 同缓存对比）。expanding 阈值几乎不损失收益——策略核心结论在无前视条件下存活。</li>
+          <li><b>「止盈冷却」结论被翻转</b>：37.18%（负优化）→ 39.44%，且回撤最浅（-18.05%）、Calmar 全场最高（2.19）。旧判定是前视阈值的伪影——这正是前视偏差足以改变研究结论的实证案例。</li>
+          <li><b>冷却5 修复后优于冷却3</b>：年化几乎相同（40.27% vs 40.38%），回撤浅 5.7pp（-19.91% vs -25.65%）。当前默认冷却3 的「问题区间救援」论据产生于修复前，建议在修复后口径下重验并考虑改默认为 冷却5 或 止盈冷却3。</li>
+          <li><b>7 个教科书开关判定全部不变</b>（无效/负优化）——原报告的主体结论稳健。</li>
+          <li><b>回归锚点</b>：「关加速止盈」组修复前后数字完全一致（36.23%），证明本次修复除加速止盈阈值外零行为变化。</li>
+        </ul>
+
+        <h3>⑥ 剩余建议</h3>
+        <ul>
+          <li>walk-forward 验证（2016-21 定参 / 2021-26 验证）与换池对照（创业→沪深300），量化选池偏差。</li>
+          <li>在修复后口径下重做 2015-2017 问题区间解剖，重定空仓冷却/止盈冷却的默认档位。</li>
+          <li>已知限制（需重构）：恐慌模块窗口内 t≥252 预热、multi_mom/risk_adj 预热被切片抵消。</li>
+        </ul>
+
+        <div class="note-box">
+          <b>总评（2026-08-03 修复后更新）：</b>P0×3 与 P1×2 已修复、止损语义已显式化，实盘链路可跑通；报告数字修复后依然成立（基线仅 -0.4pp），主体结论稳健，且「止盈冷却」判定被修正为正资产。实盘前剩余关键项：walk-forward 样本外验证与默认冷却档位重估。
+        </div>
       </div>
     </div>
 

@@ -20,7 +20,7 @@ class SignalConfig:
     accel_enabled: bool = True     # 加速止盈开关
     crash_sigma: float = -2.5      # 恐慌抄底 σ
     crash_enabled: bool = True     # 恐慌抄底开关
-    crash_lock: int = 10           # 抄底锁仓天数
+    crash_lock: int = 7            # 抄底锁仓天数 (与 web UI / bt_runner 默认一致)
     method: str = "sigma"          # sigma / percentile / ewma_z
     method_pct: float = 2.0        # percentile: 使用P值 (仅method=percentile)
     method_halflife: int = 252     # ewma_z: 半衰期 (仅method=ewma_z)
@@ -59,20 +59,21 @@ def compute_signals(
     """
 
     # ── 加速止盈阈值 (可插拔校准) ──
-    accel_th = {}
-    for i in range(len(etf_names)):
-        valid = mom10_mat[i][~np.isnan(mom10_mat[i])]
-        if len(valid) >= 60:
-            if cfg.method == "percentile":
-                accel_th[i] = np.percentile(valid, 100 - cfg.method_pct)
-            elif cfg.method == "ewma_z":
-                s = pd.Series(mom10_mat[i]).ewm(halflife=cfg.method_halflife, min_periods=60).mean().iloc[-1]
-                v = pd.Series(mom10_mat[i]).ewm(halflife=cfg.method_halflife, min_periods=60).var().iloc[-1]
-                accel_th[i] = float(s + cfg.accel_sigma * np.sqrt(v)) if not np.isnan(s) and not np.isnan(v) else 99.0
-            else:
-                accel_th[i] = valid.mean() + cfg.accel_sigma * valid.std()
+    # expanding 逐日计算, shift(1) 保证 t 日阈值只用 t-1 及之前的数据
+    # (与恐慌阈值 calc_threshold 的 arr[:t] 口径一致, 修复原全样本计算的前视偏差)
+    n_etfs = len(etf_names)
+    accel_th_mat = np.full((n_etfs, n_days), np.nan)
+    for i in range(n_etfs):
+        s = pd.Series(mom10_mat[i])
+        if cfg.method == "percentile":
+            th = s.expanding(min_periods=60).quantile((100 - cfg.method_pct) / 100.0)
+        elif cfg.method == "ewma_z":
+            e = s.ewm(halflife=cfg.method_halflife, min_periods=60)
+            th = e.mean() + cfg.accel_sigma * np.sqrt(e.var())
         else:
-            accel_th[i] = 99.0
+            ex = s.expanding(min_periods=60)
+            th = ex.mean() + cfg.accel_sigma * ex.std()
+        accel_th_mat[i] = th.shift(1).values
 
     # 同样方法用于恐慌阈值计算（在循环内使用）
     def calc_threshold(arr, t, sigma_val):
@@ -218,10 +219,11 @@ def compute_signals(
                 if th_cyb is not None and mom10_cyb[t] < th_cyb and cyb_idx_p[t] < ma200_cyb[t]:
                     crash_now = True
 
-        if cfg.crash_enabled and crash_now and t >= crash_held_until:
-            # 找到创业板在etf_names中的索引
-            cyb_idx = etf_names.index("创业") if "创业" in etf_names else 0
-            sw = True; np_pos = cyb_idx; streak = 0
+        cyb_pool_idx = etf_names.index("创业") if "创业" in etf_names else -1
+        if (cfg.crash_enabled and crash_now and t >= crash_held_until
+                and cyb_pool_idx >= 0):
+            # 恐慌抄底只买创业; 创业不在池时跳过 (原实现会静默买 index 0)
+            sw = True; np_pos = cyb_pool_idx; streak = 0
             crash_held_until = t + cfg.crash_lock
             reason = "恐慌抄底"
         elif sc:
@@ -266,6 +268,9 @@ def compute_signals(
                 elif streak >= cfg.confirm_days:
                     sw = True; np_pos = ti; streak = 0; reason = "确认买入"
         elif ti != pos and t >= crash_held_until:
+            # 注意: 止损只在存在更优候选(ti != pos)时检查——持仓仍是动量第一名时
+            # 永不止损 (相对动量取舍: 全池齐跌且持仓最抗跌时无处可切, 保持持有)。
+            # 这意味着实际亏损可能显著超过 stop_loss 线 (如 2026-06 纳指 -9.79%)。
             gap = ms[ti] - ms[pos]; met = (streak >= cfg.confirm_days)
             if pnl <= cfg.stop_loss:
                 sw = True; np_pos = ti; streak = 0; reason = "止损"
@@ -273,7 +278,9 @@ def compute_signals(
                 sw = True; np_pos = ti; streak = 0; reason = ">3%%切换"
             elif hd >= cfg.min_hold and gap >= cfg.min_gap and met:
                 sw = True; np_pos = ti; streak = 0; reason = "正常切换"
-        elif cfg.accel_enabled and pos >= 0 and mom10_mat[pos, t] > accel_th.get(pos, 99):
+        elif (cfg.accel_enabled and pos >= 0
+                and not np.isnan(accel_th_mat[pos, t])
+                and mom10_mat[pos, t] > accel_th_mat[pos, t]):
             sw = True; np_pos = -1; streak = 0; reason = "加速止盈"
             accel_exit = True
 
