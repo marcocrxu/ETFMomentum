@@ -122,6 +122,24 @@ class TushareFeed(DataFeed):
                 # 带4天重叠回补: 让上次临时补的因子/价格被官方数据覆盖修正
                 fetch_start = (cache_max - pd.Timedelta(days=4)).strftime("%Y%m%d")
 
+        # ── 头部回补: 请求起点早于缓存最早日期时向前拉取 ──
+        # (此前只向后增量, 早于 cache_min 的区间被静默截断,
+        #   导致 MA200/长预热回测在旧缓存上静默失效)
+        if df is not None:
+            cache_min = df["trade_date"].min()
+            if cache_min > start_ts:
+                head_end = min(cache_min, end_ts)
+                df_head = self._fetch_remote(code, start, head_end.strftime("%Y%m%d"))
+                if df_head is not None and len(df_head) > 0:
+                    df = pd.concat([df, df_head], ignore_index=True)
+                    df = (df.drop_duplicates("trade_date", keep="last")
+                            .sort_values("trade_date").reset_index(drop=True))
+                    df["adj_factor"] = df["adj_factor"].ffill().bfill().fillna(1.0)
+                    self._atomic_write(self._canonical_path(code), df)
+                    print("[DataFeed] %s 头部回补 %s→%s (+%d行, 共%d行)" % (
+                        code, start, head_end.strftime("%Y%m%d"),
+                        len(df_head), len(df)))
+
         if fetch_start is not None:
             df_new = self._fetch_remote(code, fetch_start, end)
             if df_new is not None and len(df_new) > 0:

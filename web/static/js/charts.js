@@ -14,6 +14,11 @@ const CHART_COLORS = {
 function getCommonOption() {
   return {
     backgroundColor: 'transparent',
+    // 关闭动画与分段渲染: 快速滑动 dataZoom 时,
+    // 动画插值和 progressive 分块绘制会产生瞬时的错误连线
+    animation: false,
+    progressive: 0,
+    progressiveThreshold: 0,
     textStyle: { fontFamily: 'Microsoft YaHei, sans-serif' },
     tooltip: {
       trigger: 'axis',
@@ -252,17 +257,38 @@ function renderPositionChart(chart, data) {
     sampledPos.push(posSeries[i]);
   }
 
-  const heatmapData = sampledPos.map((p, i) => [i, p + 1, 1]);
+  // 每个持仓行一种颜色: data value = y 索引(p+1), visualMap 按索引取色
+  const heatmapData = sampledPos.map((p, i) => [i, p + 1, p + 1]);
+
+  // 构造色板: idx0=空仓(灰), 组合行(含'+', 部分抄底)=橙, 单标的=palette 平铺
+  const posColors = ['#2a3142'];
+  let palIdx = 0;
+  for (let li = 1; li < labels.length; li++) {
+    if (labels[li].indexOf('+') >= 0) {
+      posColors.push('#e67e22');
+    } else {
+      posColors.push(CHART_COLORS.etfPalette[palIdx % CHART_COLORS.etfPalette.length]);
+      palIdx++;
+    }
+  }
 
   const option = {
     backgroundColor: 'transparent',
+    animation: false,
+    progressive: 0,
+    progressiveThreshold: 0,
     tooltip: {
       position: 'top',
       backgroundColor: 'rgba(20,24,36,.95)',
       borderColor: '#2a3142',
       textStyle: { color: '#e8eaf0' },
       formatter: function(p) {
-        return `${sampledDates[p.data[0]]}<br/>持仓: ${labels[p.data[1]] || '未知'}`;
+        const lbl = labels[p.data[1]] || '未知';
+        // 组合行(部分抄底)拆分展示, 如 "黄金(50%)+创业(50%)"
+        const detail = lbl.indexOf('+') >= 0
+          ? lbl.split('+').map(s => `<div style="color:#e67e22">${s}</div>`).join('')
+          : `<div style="color:#8b92a8">${lbl}</div>`;
+        return `<div style="font-weight:600">${sampledDates[p.data[0]]}</div><br/>持仓: ${detail}`;
       }
     },
     grid: { left: 72, right: 24, top: 12, bottom: 56 },
@@ -290,9 +316,7 @@ function renderPositionChart(chart, data) {
       min: 0,
       max: labels.length - 1,
       calculable: false,
-      inRange: {
-        color: ['#2a3142'].concat(CHART_COLORS.etfPalette.slice(0, labels.length))
-      }
+      inRange: { color: posColors }
     },
     series: [{
       name: '持仓',

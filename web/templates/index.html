@@ -64,6 +64,34 @@
         </div>
 
         <div class="param-group">
+          <label class="group-label" title="动量周期 mp-1/mp/mp+1/mp+2 四周期等权集成, 不押单一窗口">山脊集成</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="ridge_on">
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="ratio=价格比(price[t]/price[t-w]); ols=回归斜率(与生产cron同口径)">动量口径</label>
+          <select id="mom_type">
+            <option value="ratio" selected>价格比</option>
+            <option value="ols">OLS斜率</option>
+          </select>
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="持仓仍是动量第一且亏损达止损线时直接清到空仓(补止损盲区)">绝对止损</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="abs_stop_on" checked>
+              <span class="track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-group">
           <label class="group-label">绝对动量门</label>
           <div class="toggle-row">
             <label class="toggle">
@@ -151,6 +179,11 @@
         </div>
 
         <div class="param-group">
+          <label class="group-label" title="止损/绝对止损后N天内禁止买回同一标的 (0=关闭, 恐慌抄底豁免)">止损冷却天</label>
+          <input id="stop_cooldown" type="number" value="0" min="0" max="60">
+        </div>
+
+        <div class="param-group">
           <label class="group-label">恐慌抄底 σ</label>
           <div class="toggle-row">
             <label class="toggle">
@@ -164,6 +197,11 @@
         <div class="param-group">
           <label class="group-label">抄底锁仓天</label>
           <input id="crash_lock" type="number" value="7" min="0">
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="恐慌抄底时已持其他标的的切换比例(0-100)。空仓时强制100%。已持创业不重复抄底">抄底仓位 %</label>
+          <input id="crash_alloc" type="number" value="100" min="0" max="100" step="5">
         </div>
 
         <div class="param-group">
@@ -193,7 +231,7 @@
 
         <div class="param-group">
           <label class="group-label">起始日期</label>
-          <input id="start_date" type="date" value="2016-07-07">
+          <input id="start_date" type="date" value="2016-07-10">
         </div>
 
         <div class="param-group">

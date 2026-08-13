@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>实盘对账</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .stat-card { flex: 1; min-width: 130px; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px; }
+    .stat-card .k { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .stat-card .v { font-size: 20px; font-weight: 700; color: var(--text); }
+    .stat-card .s { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .pos { color: var(--green) !important; } .neg { color: var(--red) !important; }
+    .mytag { color: var(--accent); } .sttag { color: #64b5f6; }
+    .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .form-row input, .form-row select { background: var(--surface-3); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+    .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent); }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.7; }
+    #save-msg { font-size: 13px; margin-left: 10px; }
+    .open-box { background: rgba(233,69,96,.08); border: 1px solid rgba(233,69,96,.3);
+      border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; color: var(--text); }
+    .del-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+    .del-btn:hover { color: var(--red); }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div class="card">
+    <div class="card-header"><h2>📒 我的实盘对账 <span style="font-size:12px;color:var(--muted);font-weight:400">（此页面为私密页，请勿分享链接）</span></h2></div>
+    <div style="padding:18px" id="app">
+      <p class="hint">记账规则：支持分批多标的。每条记录=日期+买/卖+标的+实际成交价+<b>仓位%</b>（可空=100）。买入% = 动用当前可用现金的比例；卖出% = 卖出该标的持仓的比例。同一天先卖后买都记上、顺序不限。买入价→当日收盘、昨收→卖出价的损益如实计入。</p>
+      <div id="main"></div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='lib/echarts.min.js') }}"></script>
+<script>
+var DATA = {{ data | tojson }};
+var KEY = {{ key | tojson }};
+var records = (DATA.records || []).slice();
+
+function fmtPct(v, digits){ if (v === null || v === undefined) return '—';
+  var s = v.toFixed(digits === undefined ? 2 : digits) + '%';
+  return '<span class="' + (v > 0 ? 'pos' : (v < 0 ? 'neg' : '')) + '">' + (v > 0 ? '+' : '') + s + '</span>'; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+// ── 汇总 + 图表 + 逐笔 ──
+function renderMain(){
+  var html = '';
+  if (!DATA.empty && DATA.mine){
+    var m = DATA.mine, st = DATA.strat;
+    if (DATA.open_pos && DATA.open_pos.length){
+      html += '<div class="open-box">📌 当前持仓：' + DATA.open_pos.map(function(o){
+        return '<b>' + esc(o.asset) + '</b>（成本 ' + o.avg_cost + ' · 仓位 ' + o.weight + '% · 浮盈 ' + fmtPct(o.float_ret) + '）';
+      }).join('　') + '</div>';
+    }
+    html += '<div class="stat-row">'
+      + stat('我的总收益', fmtPct(m.total_ret), '年化 ' + (m.ann > 0 ? '+' : '') + m.ann + '% · 回撤 ' + m.mdd + '%', 'mytag')
+      + stat('策略同期', st ? fmtPct(st.total_ret) : '—', st ? ('年化 ' + (st.ann > 0 ? '+' : '') + st.ann + '% · 回撤 ' + st.mdd + '%') : '策略回测不可用', 'sttag')
+      + stat('我 - 策略', st ? fmtPct(m.total_ret - st.total_ret) : '—', '正=跑赢', '')
+      + stat('闭合交易', m.n_trades + ' 笔', '胜率 ' + (m.win_rate === null ? '—' : m.win_rate + '%'), '')
+      + (DATA.benchmarks || []).map(function(b){
+          return stat(b.name + '同期', fmtPct(b.total_ret),
+            '我' + fmtPct(m.total_ret - b.total_ret) + ' · 回撤 ' + b.mdd + '%', '');
+        }).join('')
+      + '</div>';
+    html += '<div id="nav-chart" style="width:100%;height:360px"></div>';
+    if (DATA.benchmarks && DATA.benchmarks.length){
+      html += '<p class="hint">指数同期 = 该指数从我首笔买入日 rebase 到 1，与我的实盘同窗口对比。</p>';
+    }
+    if (DATA.trades && DATA.trades.length){
+      html += '<h3 style="color:var(--accent);font-size:15px;margin:18px 0 10px">逐笔对账</h3><table><thead><tr>'
+        + '<th>标的</th><th>买入日</th><th>买价</th><th>卖出日</th><th>卖价</th>'
+        + '<th>我的收益</th><th>同期策略</th><th>差值</th><th>买点偏差</th><th>卖点偏差</th><th>备注</th></tr></thead><tbody>';
+      DATA.trades.forEach(function(t){
+        var diff = (t.strat_ret === null || t.strat_ret === undefined) ? null : t.ret - t.strat_ret;
+        html += '<tr><td>' + esc(t.asset) + '</td><td>' + t.entry_date + '</td><td>' + t.entry_price + '</td>'
+          + '<td>' + t.exit_date + '</td><td>' + t.exit_price + '</td>'
+          + '<td>' + fmtPct(t.ret) + '</td><td>' + fmtPct(t.strat_ret) + '</td><td>' + fmtPct(diff) + '</td>'
+          + '<td>' + fmtPct(t.entry_dev, 1) + '</td><td>' + fmtPct(t.exit_dev, 1) + '</td>'
+          + '<td>' + esc(t.note) + '</td></tr>';
+      });
+      html += '</tbody></table><p class="hint">买/卖点偏差 = 实际成交价相对当日收盘的偏离；正数=买贵/卖贵了，负数=买便宜了。同期策略 = 策略净值在我买入日→卖出日之间的涨幅。</p>';
+    }
+  }
+  // ── 记录管理 ──
+  html += '<h3 style="color:var(--accent);font-size:15px;margin:22px 0 10px">买卖记录（' + records.length + ' 条）</h3>';
+  html += '<div class="form-row">'
+    + '<input type="date" id="f-date">'
+    + '<select id="f-action"><option value="buy">买入</option><option value="sell">卖出</option></select>'
+    + '<select id="f-asset">' + (DATA.assets || []).map(function(a){ return '<option>' + a + '</option>'; }).join('') + '</select>'
+    + '<input type="number" id="f-price" step="0.001" min="0" placeholder="成交价" style="width:100px">'
+    + '<input type="number" id="f-amount" step="0.01" min="0" placeholder="成交额(可选)" style="width:120px">'
+    + '<input type="number" id="f-pct" step="1" min="1" max="100" placeholder="仓位%(可选)" style="width:110px">'
+    + '<input type="text" id="f-note" placeholder="备注(可选)" style="width:140px">'
+    + '<button class="btn btn-primary btn-small" id="add-btn">添加</button>'
+    + '<button class="btn btn-secondary btn-small" id="save-btn">💾 保存全部</button>'
+    + '<span id="save-msg"></span></div>'
+    + '<p class="hint">成交额和仓位%填一个就行，都空=全仓（买入用光现金/卖出清该标的）。填了成交额就按成交额精确记账。</p>';
+  html += '<table><thead><tr><th>#</th><th>日期</th><th>动作</th><th>标的</th><th>价格</th><th>成交额</th><th>仓位%</th><th>备注</th><th></th></tr></thead><tbody>';
+  records.forEach(function(r, i){
+    html += '<tr><td>' + (i + 1) + '</td><td>' + r.date + '</td>'
+      + '<td>' + (r.action === 'buy' ? '<span class="pos">买入</span>' : '<span class="neg">卖出</span>') + '</td>'
+      + '<td>' + esc(r.asset || '') + '</td><td>' + r.price + '</td>'
+      + '<td>' + (r.amount ? Number(r.amount).toFixed(1) : '') + '</td>'
+      + '<td>' + (r.pct !== undefined && r.pct !== null && r.pct !== 100 ? r.pct : '') + '</td>'
+      + '<td>' + esc(r.note || '') + '</td>'
+      + '<td><button class="del-btn" data-i="' + i + '">✕ 删除</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('main').innerHTML = html;
+
+  document.getElementById('add-btn').onclick = function(){
+    var r = { date: document.getElementById('f-date').value,
+              action: document.getElementById('f-action').value,
+              asset: document.getElementById('f-asset').value,
+              price: parseFloat(document.getElementById('f-price').value),
+              note: document.getElementById('f-note').value };
+    var amt = parseFloat(document.getElementById('f-amount').value);
+    var pct = parseFloat(document.getElementById('f-pct').value);
+    if (amt > 0) r.amount = amt;
+    if (pct > 0 && pct <= 100) r.pct = pct;
+    if (!r.date || !r.price || r.price <= 0){ msg('日期和价格必填', 'var(--red)'); return; }
+    records.push(r);
+    records.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    msg('已添加（记得点保存）', 'var(--green)'); renderMain();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.del-btn'), function(b){
+    b.onclick = function(){ records.splice(parseInt(b.dataset.i), 1);
+      msg('已删除（记得点保存）', 'var(--green)'); renderMain(); };
+  });
+  document.getElementById('save-btn').onclick = function(){
+    msg('保存中…', 'var(--muted)');
+    fetch('/mytrack/' + KEY + '/save', { method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({records: records})
+    }).then(function(r){ return r.json().then(function(j){ return {ok: r.ok, j: j}; }); })
+    .then(function(res){
+      if (res.ok && res.j.success){ msg('✅ 已保存，刷新中…', 'var(--green)'); setTimeout(function(){ location.reload(); }, 600); }
+      else msg('❌ ' + (res.j.error || '保存失败'), 'var(--red)');
+    }).catch(function(e){ msg('❌ 网络错误: ' + e, 'var(--red)'); });
+  };
+
+  if (!DATA.empty && DATA.mine) drawChart();
+}
+function stat(k, v, s, cls){
+  return '<div class="stat-card"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + '</div><div class="s">' + s + '</div></div>';
+}
+function msg(t, c){ var el = document.getElementById('save-msg'); if (el){ el.textContent = t; el.style.color = c; } }
+
+function drawChart(){
+  var series = [
+    { name: '我的实盘', type: 'line', data: DATA.nav, showSymbol: false,
+      lineStyle: { color: '#e94560', width: 2 }, itemStyle: { color: '#e94560' } },
+    { name: '买点', type: 'scatter', symbol: 'triangle', symbolSize: 11,
+      itemStyle: { color: '#4caf50' },
+      data: DATA.marks.filter(function(m){ return m.kind === 'buy'; }).map(function(m){ return [m.date, m.nav]; }) },
+    { name: '卖点', type: 'scatter', symbol: 'triangle', symbolRotate: 180, symbolSize: 11,
+      itemStyle: { color: '#f44336' },
+      data: DATA.marks.filter(function(m){ return m.kind === 'sell'; }).map(function(m){ return [m.date, m.nav]; }) }
+  ];
+  var xdata = DATA.dates;
+  if (DATA.strat){
+    // 策略日期与我的一致则直接并列, 否则按日期对齐
+    var same = DATA.strat.dates.length === DATA.dates.length;
+    series.push({ name: '策略', type: 'line', showSymbol: false,
+      lineStyle: { color: '#64b5f6', width: 2, type: 'dashed' }, itemStyle: { color: '#64b5f6' },
+      data: same ? DATA.strat.nav : alignStrat() });
+  }
+  var IDX_COLORS = ['#ffb74d', '#4dd0e1', '#ba68c8'];
+  (DATA.benchmarks || []).forEach(function(b, i){
+    series.push({ name: b.name, type: 'line', showSymbol: false,
+      lineStyle: { color: IDX_COLORS[i % IDX_COLORS.length], width: 1.4 },
+      itemStyle: { color: IDX_COLORS[i % IDX_COLORS.length] },
+      data: b.nav });
+  });
+  function alignStrat(){
+    var idx = {}; DATA.strat.dates.forEach(function(d, i){ idx[d] = DATA.strat.nav[i]; });
+    return DATA.dates.map(function(d){ return idx[d] === undefined ? null : idx[d]; });
+  }
+  var c = echarts.init(document.getElementById('nav-chart'));
+  c.setOption({
+    backgroundColor: 'transparent', animation: false,
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,24,36,.95)', borderColor: '#2a3142', textStyle: { color: '#e8eaf0' } },
+    legend: { top: 0, textStyle: { color: '#8b92a8' } },
+    grid: { left: 52, right: 24, top: 34, bottom: 60 },
+    xAxis: { type: 'category', data: xdata, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#8b92a8' } },
+    yAxis: { type: 'value', name: '净值', splitLine: { lineStyle: { color: 'rgba(42,49,66,.6)' } }, axisLabel: { color: '#8b92a8' }, scale: true },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8,
+      borderColor: '#2a3142', backgroundColor: 'rgba(20,24,36,.6)', textStyle: { color: '#8b92a8' } }],
+    series: series
+  });
+  window.addEventListener('resize', function(){ c.resize(); });
+}
+renderMain();
+</script>
+</body>
+</html>

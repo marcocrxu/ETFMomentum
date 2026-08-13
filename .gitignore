@@ -9,3 +9,4 @@ web/config_local.py
 # 本地数据缓存
 cache/
 *.csv.gz
+web/mytrack_data.json

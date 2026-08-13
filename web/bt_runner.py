@@ -3,7 +3,9 @@ import numpy as np, pandas as pd, io, base64, datetime as _dt
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt; import matplotlib.ticker as mticker
 
-from strategy.signal import SignalConfig, compute_signals
+from strategy.signal import (SignalConfig, compute_signals,
+                             calc_accel_thresholds, calc_mom60,
+                             calc_vol20, calc_up_ratio20)
 from data.feed import TushareFeed
 
 import os
@@ -71,7 +73,14 @@ def run_backtest(params):
         min_hold=int(params.get("min_hold", 10)),
         min_gap=float(params.get("min_gap", 1.0)),
         stop_loss=float(params.get("stop_loss", -5.0)),
+        stop_sigma=float(params.get("stop_sigma", 0.0)),
+        stop_sigma_floor=bool(params.get("stop_sigma_floor", False)),
+        entry_mom_cap=float(params.get("entry_mom_cap", 0.0)),
+        entry_decel_on=bool(params.get("entry_decel_on", False)),
+        entry_bias_cap=float(params.get("entry_bias_cap", 0.0)),
         exception_gap=float(params.get("exception_gap", 3.0)),
+        exception_gap_max=float(params.get("exception_gap_max", 0.0)),
+        exception_gap_sigma=float(params.get("exception_gap_sigma", 0.0)),
         confirm_days=int(params.get("confirm_days", 2)),
         commission=float(params.get("commission", 0.0001)),
         slippage=float(params.get("slippage", 0.0)),
@@ -79,18 +88,27 @@ def run_backtest(params):
         defensive_enabled=params.get("defensive_on", False),
         risk_adj_mom=params.get("risk_adj_on", False),
         accel_cooldown=int(params.get("accel_cooldown", 0)),
+        stop_cooldown=int(params.get("stop_cooldown", 0)),
         sh_cash_cooldown=int(params.get("sh_cash_cooldown", 3)),
         multi_mom=params.get("multi_mom_on", False),
         fip_tiebreak=params.get("fip_on", False),
+        abs_stop_loss=params.get("abs_stop_on", True),
+        crash_alloc=float(params.get("crash_alloc", 100)) / 100.0,
         top_k=int(params.get("top_k", 1)),
         mom_skip=int(params.get("mom_skip", 0)),
     )
 
-    # 数据: 起始日往前拉预热天数 (多周期动量需要60日动量, 预热75天; mom_skip 额外加)
+    # 数据: 起始日往前拉预热天数
+    #  - 动量/多周期/山脊集成: 各自周期 + 缓冲
+    #  - MA200 (恐慌抄底/MA200判据) 需要 200 个交易日历史 ≈ 320 自然日
+    #    提前拉够, 避免短回测区间内 MA200 为 NaN 导致恐慌抄底被静默禁用
     _mom_skip = int(params.get("mom_skip", 0))
     _warmup = mom_period + _mom_skip + 15
     if params.get("multi_mom_on", False):
         _warmup = max(_warmup, 75 + _mom_skip)
+    if params.get("ridge_on", False):
+        _warmup = max(_warmup, mom_period + _mom_skip + 17)
+    _warmup = max(_warmup, 320)   # 保证 MA200 在回测起点就已就绪
     _bt_start_dt = _dt.datetime.strptime(bt_start.replace("-",""), "%Y%m%d")
     _fetch_start = (_bt_start_dt - _dt.timedelta(days=_warmup)).strftime("%Y%m%d")
     dfs = FEED.get_dataframe(codes, _fetch_start, bt_end.replace("-",""))
@@ -136,17 +154,55 @@ def run_backtest(params):
             # 跳过最近 s 天: mom[t] = price[t-s]/price[t-s-w] - 1
             m[w+s:] = (arr[w:n_full-s] / arr[:n_full-w-s] - 1) * 100
         return m
-    mom20_mat = np.array([mom(prices[nm], mom_period, _mom_skip) for nm in etf_names])
     mom10_mat = np.array([mom(prices[nm], max(5, mom_period//2)) for nm in etf_names])
-    sh_mom = mom(sh_price, mom_period)
+
+    # 动量口径: ratio=价格比(默认), ols=回归斜率(与生产 cron 同口径, 用于统一实盘/回测)
+    _mom_type = params.get("mom_type", "ratio")
+    if _mom_type == "ols":
+        from strategy.signal import ols_momentum
+        def _rank_mom(arr, w, s=0):
+            base = ols_momentum(arr, w)
+            if s > 0:
+                out = np.full(n_full, np.nan); out[s:] = base[:n_full - s]
+                return out
+            return base
+    else:
+        _rank_mom = mom
+
+    # 山脊集成: mom(mp-1..mp+2) 四周期等权平均作为集成动量,
+    # 替换 mom20_mat / sh_mom (排名/阈值/上证空仓比较全部自动生效)
+    if params.get("ridge_on", False):
+        import warnings as _w
+        _ws = [w for w in (mom_period - 1, mom_period, mom_period + 1, mom_period + 2) if w >= 5]
+        def mom_ens(arr):
+            with _w.catch_warnings():
+                _w.simplefilter("ignore", RuntimeWarning)
+                return np.nanmean(np.array([_rank_mom(arr, w, _mom_skip) for w in _ws]), axis=0)
+        mom20_mat = np.array([mom_ens(prices[nm]) for nm in etf_names])
+        sh_mom = mom_ens(sh_price)
+    else:
+        mom20_mat = np.array([_rank_mom(prices[nm], mom_period, _mom_skip) for nm in etf_names])
+        sh_mom = _rank_mom(sh_price, mom_period)
 
     # 从用户起始日重新跑模拟 (动量已预热)
     _p_user = price_mat[:, _pre_days:]
+    # 派生矩阵在全量历史上预计算再切片: accel阈值/mom60/vol/fip 与恐慌抄底同口径,
+    # 消除窗口起点冷启动空白 (此前在切片后数据上expanding, 窗口前60天加速止盈静默失效)
+    pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, cfg)[:, _pre_days:]}
+    if cfg.multi_mom:
+        pre_mats["mom60"] = calc_mom60(price_mat)[:, _pre_days:]
+    if cfg.risk_adj_mom or cfg.stop_sigma > 0:
+        pre_mats["vol"] = calc_vol20(price_mat)[:, _pre_days:]
+    if cfg.fip_tiebreak:
+        pre_mats["up_ratio"] = calc_up_ratio20(price_mat)[:, _pre_days:]
+    # cyb_p/sh_price 传完整历史序列(含预热), signal 内部用 pre_days 偏移访问,
+    # 保证短回测区间下恐慌抄底的阈值/MA200 仍用足量历史计算
     actions, final_nav, nav_log = compute_signals(
         cfg, etf_names, _p_user,
         mom20_mat[:, _pre_days:], mom10_mat[:, _pre_days:],
-        sh_mom[_pre_days:], cyb_p[_pre_days:], sh_price[_pre_days:],
-        n_full - _pre_days)
+        sh_mom[_pre_days:], cyb_p, sh_price,
+        n_full - _pre_days,
+        pre_days=_pre_days, pre_mats=pre_mats)
 
     _vs_user = (n_full - _pre_days) - len(nav_log)
     user_nav = [1.0] * _vs_user + list(nav_log)
@@ -159,16 +215,25 @@ def run_backtest(params):
 
     decisions = []
     _entry_nav = 1.0; _entry_full_day = _pre_days
+    _crash_alloc_pct = int(round(float(params.get("crash_alloc", 100))))
     for day_idx, old_p, new_p, reason in actions:
-        full_day = min(_pre_days + _vs_user + day_idx, n_full - 1)
-        user_day = min(_vs_user + day_idx, len(user_nav) - 1)
+        # day_idx 是决策区绝对索引 (signal 内 t 从 vs 起算), 直接映射, 不再叠加 _vs_user
+        # (此前 full_day=_pre_days+_vs_user+day_idx 在 vs>0 时重复计入 vs, 如池内多标的晚上市)
+        full_day = min(_pre_days + day_idx, n_full - 1)
+        user_day = min(day_idx, len(user_nav) - 1)
         nav_now = user_nav[user_day] if 0 <= user_day < len(user_nav) else 1.0
 
         is_switch = (old_p >= 0 and new_p is not None and new_p >= 0)
         if is_switch:
             pnl = (nav_now / _entry_nav - 1) * 100 if _entry_nav > 0 else 0
+            # 恐慌抄底(已持其他切换): 标注切过去的仓位比例
+            if reason == "恐慌抄底":
+                _tgt = f"{etf_names[new_p]}({_crash_alloc_pct}%)" if _crash_alloc_pct < 100 else etf_names[new_p]
+                _act = f"{etf_names[old_p]}→{_tgt}"
+            else:
+                _act = f"{etf_names[old_p]}→{etf_names[new_p]}"
             decisions.append({"date": str(_all_full[full_day])[:10],
-                "action": f"{etf_names[old_p]}→{etf_names[new_p]}",
+                "action": _act,
                 "price": _safe_price(price_mat[old_p, full_day]),
                 "pnl": round(pnl, 2), "nav": round(nav_now, 4),
                 "days": full_day - _entry_full_day, "reason": reason})
@@ -182,8 +247,11 @@ def run_backtest(params):
                 "days": full_day - _entry_full_day, "reason": reason})
         elif new_p is not None and new_p >= 0:
             _entry_nav = nav_now; _entry_full_day = full_day
+            _act = f"买入{etf_names[new_p]}"
+            if reason == "恐慌抄底":
+                _act = f"买入{etf_names[new_p]}({_crash_alloc_pct}%)"
             decisions.append({"date": str(_all_full[full_day])[:10],
-                "action": f"买入{etf_names[new_p]}",
+                "action": _act,
                 "price": _safe_price(price_mat[new_p, full_day]),
                 "pnl": None, "nav": round(nav_now, 4),
                 "days": None, "reason": reason})
@@ -202,22 +270,37 @@ def run_backtest(params):
             "days": fd - _entry_full_day, "reason": "期末"})
 
     # ── 重建每日持仓序列 (用于前端热力图) ──
+    # 部分仓位恐慌抄底(已持其他+crash_alloc<100)期间, 用组合标签表达:
+    #   如 "黄金(50%)+创业(50%)", 动态并入 position_labels
+    position_labels = ["空仓"] + etf_names
     position_series = [-1] * n
     current_pos = -1
+    mix_idx = {}
     act_idx = 0
     actions_sorted = sorted(actions, key=lambda x: x[0])
     for t in range(n):
         while act_idx < len(actions_sorted) and actions_sorted[act_idx][0] <= t:
-            current_pos = actions_sorted[act_idx][2] if actions_sorted[act_idx][2] is not None else current_pos
+            a = actions_sorted[act_idx]
+            old_p, new_p, reason = a[1], a[2], a[3]
+            if (reason == "恐慌抄底" and old_p >= 0 and _crash_alloc_pct < 100):
+                # 部分抄底: 组合持仓 {base}(1-alloc) + {创业}(alloc)
+                key = (old_p, new_p)
+                if key not in mix_idx:
+                    mix_idx[key] = len(position_labels)
+                    position_labels.append(
+                        f"{etf_names[old_p]}({100 - _crash_alloc_pct}%)+"
+                        f"{etf_names[new_p]}({_crash_alloc_pct}%)")
+                current_pos = mix_idx[key]
+            else:
+                current_pos = new_p if new_p is not None else current_pos
             act_idx += 1
         position_series[t] = current_pos
-    position_labels = ["空仓"] + etf_names
 
-    # ── 等权买入持有基准 ──
+    # ── 等权买入持有基准 (用用户窗口切片 _p_user, 此前误用全量矩阵前n列导致错位_pre_days天) ──
     benchmark = [1.0] * n
     for t in range(1, n):
-        prev = price_mat[:, t - 1]
-        curr = price_mat[:, t]
+        prev = _p_user[:, t - 1]
+        curr = _p_user[:, t]
         valid = ~np.isnan(prev) & ~np.isnan(curr) & (prev > 0)
         if valid.any():
             day_ret = np.mean(curr[valid] / prev[valid] - 1)
@@ -225,10 +308,10 @@ def run_backtest(params):
         else:
             benchmark[t] = benchmark[t - 1]
 
-    # ── 各 ETF 归一化净值 ──
+    # ── 各 ETF 归一化净值 (同用 _p_user, 与 dates 逐日对齐) ──
     etf_navs = {}
     for idx, nm in enumerate(etf_names):
-        s = price_mat[idx]
+        s = _p_user[idx]
         first_valid = np.where(~np.isnan(s) & (s > 0))[0]
         if len(first_valid) > 0:
             base = s[first_valid[0]]
@@ -318,8 +401,8 @@ def run_backtest(params):
         checks.append(f"年度乘积不匹配: {_prod:.2f} vs {1+total_ret/100:.2f}")
     _dr = (_dt.datetime.strptime(bt_end.replace("-",""), "%Y%m%d") -
            _dt.datetime.strptime(bt_start.replace("-",""), "%Y%m%d")).days
-    if n_full > _dr * 0.7 + 60:
-        checks.append(f"数据天数过多: {n_full}")
+    if n > _dr * 0.7 + 60:   # 比较用户窗口天数 n (n_full 含预热段, 不参与此判定)
+        checks.append(f"数据天数过多: {n}")
     for d in decisions:
         if d.get("days") is not None and d["days"] < 0:
             checks.append(f"负天数: {d['date']} {d['action']}")

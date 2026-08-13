@@ -98,6 +98,7 @@ function collectParams() {
     crash_sigma: +document.getElementById('crash_sigma').value,
     crash_on: document.getElementById('crash_on').checked,
     crash_lock: +document.getElementById('crash_lock').value,
+    crash_alloc: +document.getElementById('crash_alloc').value || 100,
     min_hold: +document.getElementById('min_hold').value,
     min_gap: +document.getElementById('min_gap').value,
     stop_loss: +document.getElementById('stop_loss').value,
@@ -109,11 +110,15 @@ function collectParams() {
     defensive_on: document.getElementById('defensive_on').checked,
     risk_adj_on: document.getElementById('risk_adj_on').checked,
     accel_cooldown: +document.getElementById('accel_cooldown').value || 0,
+    stop_cooldown: +document.getElementById('stop_cooldown').value || 0,
     sh_cash_cooldown: +document.getElementById('sh_cash_cooldown').value || 0,
     multi_mom_on: document.getElementById('multi_mom_on').checked,
     fip_on: document.getElementById('fip_on').checked,
     top_k: +document.getElementById('top_k').value || 1,
     mom_skip: +document.getElementById('mom_skip').value || 0,
+    ridge_on: document.getElementById('ridge_on').checked,
+    mom_type: document.getElementById('mom_type').value,
+    abs_stop_on: document.getElementById('abs_stop_on').checked,
   };
 }
 
@@ -259,10 +264,16 @@ function renderTrades(data) {
   tbody.innerHTML = decisions.map(d => {
     const pnlClass = (d.pnl || 0) >= 0 ? 'positive' : 'negative';
     const pnlText = d.pnl != null ? `${d.pnl >= 0 ? '+' : ''}${d.pnl}%` : '-';
+    const isCrash = d.reason === '恐慌抄底';
+    const isPartial = isCrash && d.action.indexOf('%') >= 0;   // 部分仓位抄底
+    const rowBg = isCrash ? 'background:rgba(230,126,34,.08)' : '';
+    const crashBadge = isCrash
+      ? `<span class="badge-tag badge-crash">${isPartial ? '部分抄底' : '抄底'}</span>`
+      : '';
     return `
-      <tr>
+      <tr style="${rowBg}">
         <td>${d.date || '-'}</td>
-        <td>${d.action || '-'}</td>
+        <td>${d.action || '-'} ${crashBadge}</td>
         <td>${d.price != null ? d.price.toFixed(3) : '-'}</td>
         <td class="${pnlClass}">${pnlText}</td>
         <td>${d.nav != null ? d.nav.toFixed(4) : '-'}</td>
@@ -347,12 +358,17 @@ function applyConfig(cfg) {
   setChecked('multi_mom_on', cfg.multi_mom_on);
   setChecked('fip_on', cfg.fip_on);
   setVal('accel_cooldown', cfg.accel_cooldown);
+  setVal('stop_cooldown', cfg.stop_cooldown);
   setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
   setVal('top_k', cfg.top_k);
   setVal('mom_skip', cfg.mom_skip);
+  setChecked('ridge_on', cfg.ridge_on);
+  setVal('mom_type', cfg.mom_type);
+  setChecked('abs_stop_on', cfg.abs_stop_on);
   setVal('accel_sigma', cfg.accel_sigma);
   setVal('crash_sigma', cfg.crash_sigma);
   setVal('crash_lock', cfg.crash_lock);
+  setVal('crash_alloc', cfg.crash_alloc != null ? cfg.crash_alloc : 100);
   setVal('min_hold', cfg.min_hold);
   setVal('min_gap', cfg.min_gap);
   setVal('stop_loss', cfg.stop_loss);

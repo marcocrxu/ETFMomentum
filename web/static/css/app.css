@@ -460,6 +460,21 @@ tbody tr:hover {
 .positive { color: var(--green); }
 .negative { color: var(--red); }
 
+.badge-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.badge-crash {
+  background: rgba(230,126,34,.15);
+  color: #e67e22;
+  border: 1px solid rgba(230,126,34,.35);
+}
+
 .loading-overlay {
   position: fixed;
   inset: 0;
