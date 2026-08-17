@@ -10,3 +10,6 @@ web/config_local.py
 cache/
 *.csv.gz
 web/mytrack_data.json
+
+# 审计脚本运行日志 (与 out/*.json 内容重复)
+audit/out/*.log

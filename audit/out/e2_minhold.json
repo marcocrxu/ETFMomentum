@@ -1,0 +1,126 @@
+{
+ "0": {
+  "total_ret": 3595.1,
+  "ann": 44.89,
+  "mdd": -21.47,
+  "calmar": 2.09,
+  "sharpe": 1.7,
+  "n_actions": 476,
+  "n_fast": 61,
+  "win_rate": 54.1,
+  "pl": 2.7,
+  "avg": 1.99,
+  "short_le2_n": 3,
+  "short_le2_sum": -7.62
+ },
+ "1": {
+  "total_ret": 3595.1,
+  "ann": 44.89,
+  "mdd": -21.47,
+  "calmar": 2.09,
+  "sharpe": 1.7,
+  "n_actions": 476,
+  "n_fast": 61,
+  "win_rate": 54.1,
+  "pl": 2.7,
+  "avg": 1.99,
+  "short_le2_n": 3,
+  "short_le2_sum": -7.62
+ },
+ "2": {
+  "total_ret": 3595.1,
+  "ann": 44.89,
+  "mdd": -21.47,
+  "calmar": 2.09,
+  "sharpe": 1.7,
+  "n_actions": 476,
+  "n_fast": 61,
+  "win_rate": 54.1,
+  "pl": 2.7,
+  "avg": 1.99,
+  "short_le2_n": 3,
+  "short_le2_sum": -7.62
+ },
+ "3": {
+  "total_ret": 3434.7,
+  "ann": 44.23,
+  "mdd": -21.47,
+  "calmar": 2.06,
+  "sharpe": 1.68,
+  "n_actions": 477,
+  "n_fast": 60,
+  "win_rate": 56.7,
+  "pl": 2.78,
+  "avg": 2.19,
+  "short_le2_n": 0,
+  "short_le2_sum": 0
+ },
+ "4": {
+  "total_ret": 3192.1,
+  "ann": 43.18,
+  "mdd": -26.01,
+  "calmar": 1.66,
+  "sharpe": 1.65,
+  "n_actions": 475,
+  "n_fast": 59,
+  "win_rate": 59.3,
+  "pl": 2.64,
+  "avg": 2.27,
+  "short_le2_n": 0,
+  "short_le2_sum": 0
+ },
+ "_trace_base_short_under_fm3": [
+  {
+   "asset": "创业",
+   "entry": "2018-04-25",
+   "base_exit": "2018-04-27",
+   "base_days": 2,
+   "base_ret": -0.49,
+   "fm3_exit": "2018-05-02",
+   "fm3_days": 3,
+   "fm3_ret": -0.84,
+   "fm3_exit_reason": ">3%切换"
+  },
+  {
+   "asset": "创业",
+   "entry": "2018-05-23",
+   "base_exit": "2018-05-25",
+   "base_days": 2,
+   "base_ret": -2.31,
+   "fm3_exit": "2018-05-28",
+   "fm3_days": 3,
+   "fm3_ret": -2.71,
+   "fm3_exit_reason": ">3%切换"
+  },
+  {
+   "asset": "黄金",
+   "entry": "2026-03-17",
+   "base_exit": "2026-03-19",
+   "base_days": 2,
+   "base_ret": -4.82,
+   "fm3_exit": "2026-03-20",
+   "fm3_days": 3,
+   "fm3_ret": -6.98,
+   "fm3_exit_reason": "止损"
+  }
+ ],
+ "_verdict": "否决: fm=1/2 与基线完全一致(确认2天已使hd<2的快速切换不可能); fm=3 两窗口皆负优化(默认窗 3595→3435, 长窗 5267→4885, DD恶化); 追踪显示延迟出场让小亏变大亏(-4.82→-6.98演变为止损)。'≤2天小亏'是快速通道在纠正错误入场的成本, 不是切换过早的bug。开关 fast_min_hold 已加入 signal.py, 默认0=关闭, 留档。",
+ "_long_window_2015": {
+  "fm0": {
+   "total_ret": 5267.4,
+   "calmar": 1.92,
+   "mdd": -22.28,
+   "fast_n": 71,
+   "short_le2_n": 6,
+   "short_avg": -1.88
+  },
+  "fm3": {
+   "total_ret": 4884.5,
+   "calmar": 1.67,
+   "mdd": -25.01,
+   "fast_n": 69,
+   "short_le2_n": 0
+  },
+  "note": "fm=0 精确复现 E2 证据(71笔/6笔/-1.88%), 口径自洽"
+ }
+}

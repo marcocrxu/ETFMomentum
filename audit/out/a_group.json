@@ -1,0 +1,415 @@
+{
+ "A1": {
+  "table": {
+   "2.0": {
+    "total_ret": 1384.92,
+    "ann_ret": 31.94,
+    "max_dd": -26.34,
+    "calmar": 1.21,
+    "sharpe": 1.33,
+    "trade_count": 375
+   },
+   "2.5": {
+    "total_ret": 3196.68,
+    "ann_ret": 43.2,
+    "max_dd": -21.47,
+    "calmar": 2.01,
+    "sharpe": 1.66,
+    "trade_count": 312
+   },
+   "3.0": {
+    "total_ret": 3595.13,
+    "ann_ret": 44.89,
+    "max_dd": -21.47,
+    "calmar": 2.09,
+    "sharpe": 1.7,
+    "trade_count": 283
+   },
+   "3.5": {
+    "total_ret": 3233.67,
+    "ann_ret": 43.37,
+    "max_dd": -21.47,
+    "calmar": 2.02,
+    "sharpe": 1.65,
+    "trade_count": 267
+   },
+   "4.0": {
+    "total_ret": 2249.37,
+    "ann_ret": 38.31,
+    "max_dd": -23.58,
+    "calmar": 1.62,
+    "sharpe": 1.47,
+    "trade_count": 243
+   }
+  },
+  "verdict": "3.0 为峰"
+ },
+ "A2": {
+  "table": {
+   "0": {
+    "total_ret": 3450.14,
+    "ann_ret": 44.3,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.67,
+    "trade_count": 309
+   },
+   "1": {
+    "total_ret": 3450.14,
+    "ann_ret": 44.3,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.67,
+    "trade_count": 309
+   },
+   "2": {
+    "total_ret": 3431.9,
+    "ann_ret": 44.22,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.67,
+    "trade_count": 296
+   },
+   "3": {
+    "total_ret": 3595.13,
+    "ann_ret": 44.89,
+    "max_dd": -21.47,
+    "calmar": 2.09,
+    "sharpe": 1.7,
+    "trade_count": 283
+   },
+   "4": {
+    "total_ret": 3196.56,
+    "ann_ret": 43.2,
+    "max_dd": -21.47,
+    "calmar": 2.01,
+    "sharpe": 1.66,
+    "trade_count": 275
+   },
+   "5": {
+    "total_ret": 3423.14,
+    "ann_ret": 44.18,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.7,
+    "trade_count": 266
+   },
+   "10": {
+    "total_ret": 2830.26,
+    "ann_ret": 41.48,
+    "max_dd": -21.47,
+    "calmar": 1.93,
+    "sharpe": 1.65,
+    "trade_count": 242
+   }
+  }
+ },
+ "A3": {
+  "cooldown_0_3_5": {
+   "0": {
+    "total_ret": 3450.14,
+    "ann_ret": 44.3,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.67,
+    "trade_count": 309
+   },
+   "3": {
+    "total_ret": 3595.13,
+    "ann_ret": 44.89,
+    "max_dd": -21.47,
+    "calmar": 2.09,
+    "sharpe": 1.7,
+    "trade_count": 283
+   },
+   "5": {
+    "total_ret": 3423.14,
+    "ann_ret": 44.18,
+    "max_dd": -21.47,
+    "calmar": 2.06,
+    "sharpe": 1.7,
+    "trade_count": 266
+   }
+  },
+  "best_by_calmar": 3,
+  "verdict": "修正口径下 Calmar 最优档=3; 当前默认3档: 仍为最优"
+ },
+ "A4": {
+  "full": {
+   "cd0": {
+    "total_ret": 3595.13,
+    "calmar": 2.09,
+    "max_dd": -21.47,
+    "ann_ret": 44.89,
+    "trade_count": 283
+   },
+   "cd3": {
+    "total_ret": 2339.91,
+    "calmar": 2.05,
+    "max_dd": -18.97,
+    "ann_ret": 38.84,
+    "trade_count": 263
+   }
+  },
+  "segments": {
+   "seg1_2016_2021": {
+    "cd0": {
+     "total_ret": 565.38,
+     "calmar": 2.25,
+     "max_dd": -21.47,
+     "ann_ret": 48.3
+    },
+    "cd3": {
+     "total_ret": 529.64,
+     "calmar": 2.63,
+     "max_dd": -17.69,
+     "ann_ret": 46.6
+    },
+    "cd3_better": "True"
+   },
+   "seg2_2021_2026": {
+    "cd0": {
+     "total_ret": 366.79,
+     "calmar": 2.33,
+     "max_dd": -15.77,
+     "ann_ret": 36.73
+    },
+    "cd3": {
+     "total_ret": 285.7,
+     "calmar": 1.64,
+     "max_dd": -19.22,
+     "ann_ret": 31.54
+    },
+    "cd3_better": "False"
+   }
+  },
+  "consistent": false
+ },
+ "A5": {
+  "table": {
+   "20": {
+    "total_ret": 3595.1,
+    "ann": 44.89,
+    "mdd": -21.47,
+    "calmar": 2.09,
+    "sharpe": 1.7,
+    "n_actions": 476
+   },
+   "40": {
+    "total_ret": 1460.5,
+    "ann": 32.61,
+    "mdd": -21.62,
+    "calmar": 1.51,
+    "sharpe": 1.38,
+    "n_actions": 657
+   },
+   "60": {
+    "total_ret": 990.0,
+    "ann": 27.81,
+    "mdd": -21.47,
+    "calmar": 1.3,
+    "sharpe": 1.26,
+    "n_actions": 749
+   }
+  },
+  "verdict": "不改善→维持单参数"
+ },
+ "A6": {
+  "norm_vol": {
+   "total_ret": 1333.6,
+   "ann": 31.46,
+   "mdd": -17.5,
+   "calmar": 1.8,
+   "sharpe": 1.37,
+   "n_actions": 445
+  },
+  "baseline": {
+   "total_ret": 3595.13,
+   "ann_ret": 44.89,
+   "max_dd": -21.47,
+   "calmar": 2.09
+  },
+  "verdict": "未显著提升→不采纳"
+ },
+ "A7": {
+  "accel_audit": {
+   "纳指": {
+    "triggers_per_year": {
+     "2015": 0,
+     "2016": 0,
+     "2017": 0,
+     "2018": 1,
+     "2019": 1,
+     "2020": 20,
+     "2021": 0,
+     "2022": 1,
+     "2023": 0,
+     "2024": 0,
+     "2025": 0,
+     "2026": 2
+    },
+    "threshold_eoy": {
+     "2015": 10.17,
+     "2016": 8.84,
+     "2017": 8.18,
+     "2018": 9.68,
+     "2019": 9.68,
+     "2020": 13.06,
+     "2021": 12.62,
+     "2022": 12.92,
+     "2023": 12.8,
+     "2024": 12.84,
+     "2025": 12.8,
+     "2026": 12.93
+    },
+    "total_triggers": 25
+   },
+   "黄金": {
+    "triggers_per_year": {
+     "2015": 0,
+     "2016": 1,
+     "2017": 0,
+     "2018": 0,
+     "2019": 8,
+     "2020": 3,
+     "2021": 0,
+     "2022": 0,
+     "2023": 0,
+     "2024": 6,
+     "2025": 12,
+     "2026": 11
+    },
+    "threshold_eoy": {
+     "2015": 7.1,
+     "2016": 9.41,
+     "2017": 7.74,
+     "2018": 6.82,
+     "2019": 7.22,
+     "2020": 7.91,
+     "2021": 7.7,
+     "2022": 7.52,
+     "2023": 7.36,
+     "2024": 7.59,
+     "2025": 8.37,
+     "2026": 9.1
+    },
+    "total_triggers": 41
+   },
+   "创业": {
+    "triggers_per_year": {
+     "2015": 0,
+     "2016": 0,
+     "2017": 0,
+     "2018": 0,
+     "2019": 4,
+     "2020": 2,
+     "2021": 0,
+     "2022": 0,
+     "2023": 0,
+     "2024": 9,
+     "2025": 0,
+     "2026": 0
+    },
+    "threshold_eoy": {
+     "2015": 28.71,
+     "2016": 22.81,
+     "2017": 18.03,
+     "2018": 16.94,
+     "2019": 17.34,
+     "2020": 17.98,
+     "2021": 17.64,
+     "2022": 17.32,
+     "2023": 16.61,
+     "2024": 18.54,
+     "2025": 18.62,
+     "2026": 18.65
+    },
+    "total_triggers": 15
+   }
+  },
+  "panic_audit": {
+   "cyb": {
+    "crash_days_per_year": {
+     "2015": 0,
+     "2016": 0,
+     "2017": 0,
+     "2018": 0,
+     "2019": 0,
+     "2020": 0,
+     "2021": 1,
+     "2022": 1,
+     "2023": 0,
+     "2024": 0,
+     "2025": 1,
+     "2026": 1
+    },
+    "threshold_min": -24.33,
+    "threshold_max": -11.78,
+    "threshold_last": -14.47,
+    "total_crash_days": 4
+   },
+   "sh": {
+    "crash_days_per_year": {
+     "2015": 0,
+     "2016": 0,
+     "2017": 0,
+     "2018": 4,
+     "2019": 0,
+     "2020": 7,
+     "2021": 0,
+     "2022": 3,
+     "2023": 0,
+     "2024": 0,
+     "2025": 0,
+     "2026": 0
+    },
+    "threshold_min": -17.74,
+    "threshold_max": -8.32,
+    "threshold_last": -8.39,
+    "total_crash_days": 14
+   }
+  },
+  "method_variants": {
+   "sigma": {
+    "total_ret": 3595.13,
+    "calmar": 2.09,
+    "max_dd": -21.47,
+    "ann_ret": 44.89,
+    "trade_count": 283
+   },
+   "ewma_z": {
+    "total_ret": 3656.27,
+    "calmar": 2.1,
+    "max_dd": -21.47,
+    "ann_ret": 45.14,
+    "trade_count": 275
+   },
+   "percentile": {
+    "total_ret": 2987.81,
+    "calmar": 1.97,
+    "max_dd": -21.47,
+    "ann_ret": 42.24,
+    "trade_count": 344
+   }
+  }
+ },
+ "B1fix": {
+  "bind=False": {
+   "total_ret": 3595.1,
+   "ann": 44.89,
+   "mdd": -21.47,
+   "calmar": 2.09,
+   "sharpe": 1.7,
+   "n_actions": 476
+  },
+  "bind=True": {
+   "total_ret": 3347.8,
+   "ann": 43.86,
+   "mdd": -21.47,
+   "calmar": 2.04,
+   "sharpe": 1.67,
+   "n_actions": 476
+  },
+  "verdict": "修复为负优化, 维持旧语义并文档化"
+ }
+}

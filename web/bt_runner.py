@@ -50,6 +50,9 @@ def run_backtest(params):
 
     name_to_code = {n: ALL_CODES[n] for n in etf_names}
     codes = list(name_to_code.values()) + ["000001.SH", "399006.SZ"]
+    _park_code = params.get("cash_park_code", "")
+    if _park_code:
+        codes += [_park_code]   # 空仓停泊标的 (不入排名池)
 
     bt_start = params.get("start_date", "2016-07-07")
     bt_end = params.get("end_date", "2026-07-28")
@@ -78,6 +81,11 @@ def run_backtest(params):
         entry_mom_cap=float(params.get("entry_mom_cap", 0.0)),
         entry_decel_on=bool(params.get("entry_decel_on", False)),
         entry_bias_cap=float(params.get("entry_bias_cap", 0.0)),
+        vol_scale_target=float(params.get("vol_scale_target", 0.0)),
+        trend_ma=int(params.get("trend_ma", 0)),
+        trend_ma_exempt=bool(params.get("trend_ma_exempt", False)),
+        rank_sticky=int(params.get("rank_sticky", 0)),
+        cash_park_code=str(params.get("cash_park_code", "")),
         exception_gap=float(params.get("exception_gap", 3.0)),
         exception_gap_max=float(params.get("exception_gap_max", 0.0)),
         exception_gap_sigma=float(params.get("exception_gap_sigma", 0.0)),
@@ -144,6 +152,7 @@ def run_backtest(params):
     prices = {nm: _build_prices(code) for nm, code in name_to_code.items()}
     sh_price = _build_prices("000001.SH")
     cyb_p = _build_prices("399006.SZ") if "399006.SZ" in dfs else np.full(n_full, np.nan)
+    bond_full = _build_prices(_park_code) if (_park_code and _park_code in dfs) else None
     price_mat = np.array([prices[nm] for nm in etf_names])
 
     def mom(arr, w, s=0):
@@ -184,6 +193,16 @@ def run_backtest(params):
         mom20_mat = np.array([_rank_mom(prices[nm], mom_period, _mom_skip) for nm in etf_names])
         sh_mom = _rank_mom(sh_price, mom_period)
 
+    # 动量滞后窗口 (Novy-Marx 中间期回声): 排名动量改用"滞后lag天前的20日收益", 排名/阈值/上证比较全生效
+    _mom_lag = int(params.get("mom_lag", 0))
+    if _mom_lag > 0:
+        def _lag_mom(arr, w, lag):
+            m = np.full(n_full, np.nan)
+            m[w+lag:] = (arr[w+lag:] / arr[:n_full-w-lag] - 1) * 100
+            return m
+        mom20_mat = np.array([_lag_mom(prices[nm], mom_period, _mom_lag) for nm in etf_names])
+        sh_mom = _lag_mom(sh_price, mom_period, _mom_lag)
+
     # 从用户起始日重新跑模拟 (动量已预热)
     _p_user = price_mat[:, _pre_days:]
     # 派生矩阵在全量历史上预计算再切片: accel阈值/mom60/vol/fip 与恐慌抄底同口径,
@@ -191,8 +210,15 @@ def run_backtest(params):
     pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, cfg)[:, _pre_days:]}
     if cfg.multi_mom:
         pre_mats["mom60"] = calc_mom60(price_mat)[:, _pre_days:]
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0:
+    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0:
         pre_mats["vol"] = calc_vol20(price_mat)[:, _pre_days:]
+    if cfg.trend_ma > 0:
+        _ma_full = np.full(price_mat.shape, np.nan)
+        for _i in range(price_mat.shape[0]):
+            _ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
+        pre_mats["ma"] = _ma_full[:, _pre_days:]
+    if bond_full is not None:
+        pre_mats["park"] = bond_full[_pre_days:]
     if cfg.fip_tiebreak:
         pre_mats["up_ratio"] = calc_up_ratio20(price_mat)[:, _pre_days:]
     # cyb_p/sh_price 传完整历史序列(含预热), signal 内部用 pre_days 偏移访问,

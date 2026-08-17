@@ -18,6 +18,11 @@ class SignalConfig:
     entry_mom_cap: float = 0.0    # 入场动量耗尽门: 空仓入场时候选20日动量>X%视为耗尽不买 (0=关闭; 恐慌抄底豁免)
     entry_decel_on: bool = False  # 入场减速门: mom10<mom20 视为动量减速, 空仓不买 (恐慌抄底豁免)
     entry_bias_cap: float = 0.0   # 入场乖离门: 候选现价高于20日均线X%视为超买不买 (0=关闭; 恐慌抄底豁免)
+    vol_scale_target: float = 0.0 # 波动率缩放仓位: 仓位=min(1, 目标年化波动/持仓年化已实现波动), 只降不升 (0=关闭; 恐慌抄底锁仓期豁免)
+    trend_ma: int = 0             # 资产级长均线趋势门: 候选价须高于自身MA(N)才买入 (0=关闭)
+    trend_ma_exempt: bool = False # 趋势门豁免纳指/黄金 (长期趋势资产不误杀)
+    rank_sticky: int = 0          # 排名缓冲: 持仓仍在前N名时不切换 (0=关闭, 1=默认行为; 止损/空仓/止盈不受影响)
+    cash_park_code: str = ""      # 空仓停泊标的代码 (如 511010.SH 5年国债 / 511880.SH 银华日利货基; 空=关; 不入排名池, 买卖各计一次手续费)
     exception_gap: float = 3.0     # 例外动量差
     exception_gap_max: float = 0.0   # 快速通道上限: gap≥此值不走快速通道改走慢通道 (0=关闭; 大gap=过度延伸易反转)
     exception_gap_sigma: float = 0.0 # 快速通道σ自适应: 门槛=max(exception_gap, k×滚动60日gapσ) (0=关闭)
@@ -437,12 +442,25 @@ def compute_signals(
                 best, best_m = i, ms[i]
         return best
 
-    # ── 20日波动率 (风险调整动量 / 自适应止损 使用) ──
+    # ── 20日波动率 (风险调整动量 / 自适应止损 / 波动率缩放仓位 使用) ──
     vol_mat = np.full(price_mat.shape, np.nan)
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0:
+    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0:
         vol_mat = (pre_mats or {}).get("vol")
         if vol_mat is None:
             vol_mat = calc_vol20(price_mat)
+
+    # ── 空仓停泊标的序列 (货基/国债; 不入排名池) ──
+    bond_arr = (pre_mats or {}).get("park") if cfg.cash_park_code else None
+
+    # ── 资产级长均线 (趋势门使用; 优先用全量历史预计算值防冷启动) ──
+    ma_mat = None
+    if cfg.trend_ma > 0:
+        ma_mat = (pre_mats or {}).get("ma")
+        if ma_mat is None:
+            ma_full = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
+            ma_mat = ma_full
 
     def stop_line(i, t):
         """止损线: stop_sigma>0 时 = -k×标的自身20日波动率(不同标的不同线);
@@ -472,6 +490,22 @@ def compute_signals(
                 if ma > 0 and (px / ma - 1) * 100 > cfg.entry_bias_cap:
                     return True
         return False
+
+    def trend_ok(i, t):
+        """资产级趋势门: 候选须高于自身MA(trend_ma); 豁免标的/数据缺失时不拦"""
+        if ma_mat is None or np.isnan(ma_mat[i, t]):
+            return True
+        if cfg.trend_ma_exempt and etf_names[i] in SH_CASH_EXEMPT_NAMES:
+            return True
+        px = price_mat[i, t]
+        return not np.isnan(px) and px > ma_mat[i, t]
+
+    def vol_scale(i, t):
+        """波动率缩放: min(1, 目标年化波动/持仓年化已实现波动), 只降不升"""
+        v = vol_mat[i, t]
+        if np.isnan(v) or v <= 0:
+            return 1.0
+        return min(1.0, cfg.vol_scale_target / (v * np.sqrt(244)))
 
     # ── 60日动量 (仅多周期动量开启时使用) ──
     mom60_mat = None
@@ -507,7 +541,15 @@ def compute_signals(
             prev_p = price_mat[pos, max(0, t-1)]
             curr_p = price_mat[pos, t]
             if not np.isnan(prev_p) and not np.isnan(curr_p) and prev_p > 0:
-                nav *= curr_p / prev_p
+                r = curr_p / prev_p - 1
+                if cfg.vol_scale_target > 0 and not t < crash_held_until:
+                    nav *= 1 + vol_scale(pos, t) * r   # 波动率缩放: 超额部分持现金(抄底锁仓期豁免)
+                else:
+                    nav *= 1 + r
+        elif cfg.cash_park_code and bond_arr is not None:
+            pb = bond_arr[max(0, t-1)]; cb = bond_arr[t]
+            if not np.isnan(pb) and not np.isnan(cb) and pb > 0:
+                nav *= cb / pb     # 空仓停泊: 停泊标的日收益计入净值
 
         hd = t - hs if pos >= 0 else 0
         pnl = (nav / hn - 1) * 100 if pos >= 0 and hn > 0 else 0
@@ -614,6 +656,7 @@ def compute_signals(
                 cost = cfg.commission + cfg.slippage
                 if pos == -1:
                     nav *= (1 - cost * alloc)              # 空仓按 alloc 比例买入
+                    if cfg.cash_park_code: nav *= (1 - cost) # 空仓停泊: 卖出停泊标的计费
                 else:
                     nav *= (1 - cost * alloc) ** 2       # 卖出base的alloc份+买入创业: 双边按成交额
                 crash_alloc_now = alloc
@@ -640,7 +683,7 @@ def compute_signals(
                 if ex_idx:
                     ei = max(ex_idx, key=lambda i: ms[i])
                     lm = ms[ei]
-                    if (not np.isnan(lm) and not entry_blocked(ei, t)
+                    if (not np.isnan(lm) and not entry_blocked(ei, t) and trend_ok(ei, t)
                             and (lm >= cfg.cash_skip_gt or streak >= cfg.confirm_days)):
                         sw = True; np_pos = ei; streak = 0
                         reason = ">3%即买(豁免)" if lm >= cfg.cash_skip_gt else "确认买入(豁免)"
@@ -671,6 +714,8 @@ def compute_signals(
                 lm = ms[ti]
                 if entry_blocked(ti, t):
                     pass  # 动量耗尽门: 候选已耗尽/减速/超买, 保持空仓等待
+                elif not trend_ok(ti, t):
+                    pass  # 趋势门: 候选低于自身长均线, 保持空仓
                 elif lm >= cfg.cash_skip_gt and not np.isnan(lm):
                     sw = True; np_pos = ti; streak = 0; reason = ">3%即买"
                 elif streak >= cfg.confirm_days:
@@ -691,6 +736,10 @@ def compute_signals(
                 fast_gap = False
             if pnl <= stop_line(pos, t):
                 sw = True; np_pos = ti; streak = 0; reason = "止损"
+            elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:
+                pass  # 排名缓冲: 持仓仍在前N名, 不切换
+            elif not trend_ok(ti, t):
+                pass  # 趋势门: 候选低于自身长均线, 不切换
             elif fast_gap and met and hd >= cfg.fast_min_hold:
                 sw = True; np_pos = ti; streak = 0; reason = ">3%切换"
             elif hd >= cfg.min_hold and gap >= cfg.min_gap and met:
@@ -711,6 +760,7 @@ def compute_signals(
             cost = cfg.commission + cfg.slippage
             crash_alloc_now = 0.0   # 任何正常动作清理抄底叠加仓, 归并为新主仓全仓
             if pos >= 0: nav *= (1 - cost)
+            elif cfg.cash_park_code: nav *= (1 - cost) # 空仓停泊: 卖出停泊标的计费
             if np_pos >= 0: nav *= (1 - cost); hs = t; hn = nav
             old_pos = pos; pos = np_pos
             if accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0:

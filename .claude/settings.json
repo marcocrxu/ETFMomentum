@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\n⛔ NEVER suggest clearing browser cache, hard refresh, Ctrl+Shift+R, or incognito mode. User has confirmed they refresh. Always verify API with curl first.\n' >&2",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
