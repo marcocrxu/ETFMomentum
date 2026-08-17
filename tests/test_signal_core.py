@@ -313,3 +313,112 @@ def test_stop_cooldown_topk():
     t0 = next(a[0] for a in actions0 if a[3] == "止损" and a[1] == 1)
     assert any(a[2] == 1 and t0 < a[0] < t0 + cd for a in actions0), \
         "冷却=0 时黄金未被快速买回, 场景无区分度"
+
+# ── 9. 快速通道分档切换 (fast_lane_staged) ──
+def _staged_inputs(jump_day=204, jump=0.017, jump_len=2, drift=0.0008, drift_len=40):
+    """纳指: 前180天强(被持有)→80天走平→140天缓复苏; 黄金: 与纳指并列0动量,
+    jump_day 起跳涨 jump_len 天制造 3~5% gap (正常切换1%门槛来不及抢跑), 其后 drift;
+    创业: 常平。指数常平 (sh_cash/crash 不干扰)"""
+    n = 400
+    nz = np.r_[np.full(180, 0.004), np.full(80, 0.0), np.full(n - 260, 0.001)]
+    gold = np.zeros(n)
+    gold[jump_day:jump_day + jump_len] = jump
+    gold[jump_day + jump_len:jump_day + jump_len + drift_len] = drift
+    prices = {
+        "纳指": 100 * np.exp(np.cumsum(nz)),
+        "黄金": 100 * np.exp(np.cumsum(gold)),
+        "创业": np.full(n, 100.0),
+    }
+    return build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+
+
+def _staged_cfg(**over):
+    base = dict(fast_lane_staged=True, fast_full_gap=5.0,
+                accel_enabled=False, sh_cash=False, crash_enabled=False)
+    base.update(over)
+    return SignalConfig(**base)
+
+
+def test_staged_off_unchanged():
+    """默认关闭: 快速通道仍为全切, 无组合仓动作"""
+    inp = _staged_inputs()
+    cfg_off = SignalConfig(accel_enabled=False, sh_cash=False, crash_enabled=False)
+    actions, _, _ = compute_signals(cfg_off, **inp)
+    assert any(a[3] == ">3%切换" for a in actions), \
+        f"基线快速通道未触发: {[a[3] for a in actions]}"
+    assert not any(a[3] == ">3%切换(50%)" for a in actions)
+
+
+def test_staged_half_then_revert():
+    """gap∈[3,5)% → 切50%成组合; 核心(纳指)重新领先≥min_gap → 卫星回撤全回核心"""
+    inp = _staged_inputs()
+    cfg = _staged_cfg()
+    actions, _, nav_log = compute_signals(cfg, **inp)
+    nz_i, gold_i = inp["etf_names"].index("纳指"), inp["etf_names"].index("黄金")
+    half = [a for a in actions if a[3] == ">3%切换(50%)"]
+    assert half and half[0][1] == nz_i and half[0][2] == gold_i, \
+        f"未切50%到黄金: {[a[3] for a in actions]}"
+    assert not any(a[3] == "分档升级全切" for a in actions), "gap<5% 不应升级全切"
+    rev = [a for a in actions if a[3] == "卫星回撤"]
+    assert rev and rev[0][2] == nz_i, f"核心重新领先后未回撤: {[a[3] for a in actions]}"
+    rep = replay_nav(actions, inp["price_mat"], inp["etf_names"], cfg)
+    vs = _expected_vs(inp)
+    np.testing.assert_allclose(rep[vs:], nav_log, atol=1e-10)
+
+
+def test_staged_escalate():
+    """gap 冲到≥5% → 卫星升级全切"""
+    inp = _staged_inputs(drift=0.003)
+    cfg = _staged_cfg()
+    actions, _, nav_log = compute_signals(cfg, **inp)
+    gold_i = inp["etf_names"].index("黄金")
+    half = [a for a in actions if a[3] == ">3%切换(50%)"]
+    assert half, f"未先切50%: {[a[3] for a in actions]}"
+    esc = [a for a in actions if a[3] == "分档升级全切"]
+    assert esc and esc[0][2] == gold_i, f"未升级全切: {[a[3] for a in actions]}"
+    assert not any(a[3] == "卫星回撤" for a in actions)
+    rep = replay_nav(actions, inp["price_mat"], inp["etf_names"], cfg)
+    vs = _expected_vs(inp)
+    np.testing.assert_allclose(rep[vs:], nav_log, atol=1e-10)
+
+
+def test_staged_gap_over_full_keeps_full_switch():
+    """首日 gap 即≥5%: 分档开启也不切50%, 直接全切 (旧行为)"""
+    inp = _staged_inputs(jump=0.03, drift=0.0, drift_len=0)
+    cfg = _staged_cfg()
+    actions, _, _ = compute_signals(cfg, **inp)
+    assert any(a[3] == ">3%切换" for a in actions), \
+        f"gap≥5% 应直接全切: {[a[3] for a in actions]}"
+    assert not any(a[3] == ">3%切换(50%)" for a in actions)
+
+
+def test_staged_half_fee_is_half_turnover():
+    """50%切换日费用 = 当日收益 × (1-c×0.5)²"""
+    inp = _staged_inputs()
+    cfg = _staged_cfg(commission=0.001, slippage=0.0)
+    actions, _, nav_log = compute_signals(cfg, **inp)
+    half = next(a for a in actions if a[3] == ">3%切换(50%)")
+    t, base = half[0], half[1]
+    vs = _expected_vs(inp)
+    p0, p1 = inp["price_mat"][base, t - 1], inp["price_mat"][base, t]
+    expect = nav_log[t - 1 - vs] * (p1 / p0) * (1 - 0.001 * 0.5) ** 2
+    assert nav_log[t - vs] == pytest.approx(expect, rel=1e-10), \
+        "50%切换费用不是半换手双边"
+
+
+def test_staged_combo_crash_takeover():
+    """组合仓期间恐慌爆发: 清双腿(恐慌换仓) → 标准恐慌抄底, 组合仓不再存在"""
+    inp = _staged_inputs()
+    cyb = np.full(inp["n_days"], 3000.0)
+    cyb[230:] = 3000 * np.linspace(1, 0.80, inp["n_days"] - 230)
+    inp = dict(inp, cyb_idx_p=cyb)
+    cfg = SignalConfig(fast_lane_staged=True, fast_full_gap=5.0,
+                       accel_enabled=False, sh_cash=False)
+    actions, _, nav_log = compute_signals(cfg, **inp)
+    assert any(a[3] == "恐慌换仓" for a in actions), \
+        f"组合仓未在恐慌日清仓: {[a[3] for a in actions]}"
+    crash = [a for a in actions if a[3] == "恐慌抄底"]
+    assert crash, "恐慌换仓后未抄底"
+    rep = replay_nav(actions, inp["price_mat"], inp["etf_names"], cfg)
+    vs = _expected_vs(inp)
+    np.testing.assert_allclose(rep[vs:], nav_log, atol=1e-10)

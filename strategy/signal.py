@@ -26,6 +26,8 @@ class SignalConfig:
     exception_gap: float = 3.0     # 例外动量差
     exception_gap_max: float = 0.0   # 快速通道上限: gap≥此值不走快速通道改走慢通道 (0=关闭; 大gap=过度延伸易反转)
     exception_gap_sigma: float = 0.0 # 快速通道σ自适应: 门槛=max(exception_gap, k×滚动60日gapσ) (0=关闭)
+    fast_lane_staged: bool = False  # 快速通道分档切换: gap∈[exception_gap, fast_full_gap) 切50%成核心+卫星组合, ≥fast_full_gap 切100% (0=关闭=旧行为; 仅Top-1路径)
+    fast_full_gap: float = 5.0      # 分档切换全切档位 (仅 fast_lane_staged=True 时生效)
     commission: float = 0.0001     # 手续费率(单边)
     slippage: float = 0.0          # 滑点/冲击成本(单边)
     accel_sigma: float = 3.0       # 加速止盈 σ
@@ -431,8 +433,26 @@ def compute_signals(
     stop_block_until = np.full(n_etfs, -1)          # 止损冷却状态 (按标的独立计时)
     crash_alloc_now = 0.0                           # 恐慌抄底当前仓位比例 (0=无抄底叠加仓)
     crash_base_pos = -1                             # 抄底前的名义主仓 (用于组合净值计算; -1=空仓抄底)
+    sat_pos = -1; sat_alloc = 0.0; sat_hs = -1      # 分档切换组合: 卫星腿(-1=无), 权重与入场日
     actions = []
     nav_log = []
+
+    def _leg_pnl(i, entry_day, t):
+        """组合仓单腿价格口径盈亏% (无入场日/价格缺失返回0)"""
+        p0 = price_mat[i, max(0, entry_day)] if entry_day >= 0 else np.nan
+        p1 = price_mat[i, t]
+        if not np.isnan(p0) and not np.isnan(p1) and p0 > 0:
+            return (p1 / p0 - 1) * 100
+        return 0.0
+
+    def _resolve_combo_to(survivor, entry_day, t, nav_now):
+        """组合归并到单腿后重定基 hn: 使后续 pnl=幸存腿自身价格收益 (nav 须为扣费后的当前值)"""
+        if entry_day >= 0:
+            p0 = price_mat[survivor, max(0, entry_day)]
+            p1 = price_mat[survivor, t]
+            if not np.isnan(p0) and not np.isnan(p1) and p0 > 0 and p1 > 0:
+                return nav_now / max(p1 / p0, 1e-9)
+        return nav_now
 
     def _def_target(ms, vm):
         """防御资产中动量最强且为正者, 无则 -1 (防御资产也走绝对动量)"""
@@ -536,6 +556,16 @@ def compute_signals(
             c1 = price_mat[cyb_pool_idx, t]
             if not np.isnan(c0) and not np.isnan(c1) and c0 > 0:
                 day_ret += crash_alloc_now * (c1 / c0 - 1)
+            nav *= (1 + day_ret)
+        elif sat_pos >= 0:
+            # 分档切换组合: 核心(1-alloc)+卫星(alloc) 按定权重计息
+            day_ret = 0.0
+            b0 = price_mat[pos, max(0, t-1)]; b1 = price_mat[pos, t]
+            if not np.isnan(b0) and not np.isnan(b1) and b0 > 0:
+                day_ret += (1 - sat_alloc) * (b1 / b0 - 1)
+            s0 = price_mat[sat_pos, max(0, t-1)]; s1 = price_mat[sat_pos, t]
+            if not np.isnan(s0) and not np.isnan(s1) and s0 > 0:
+                day_ret += sat_alloc * (s1 / s0 - 1)
             nav *= (1 + day_ret)
         elif pos >= 0:
             prev_p = price_mat[pos, max(0, t-1)]
@@ -650,6 +680,11 @@ def compute_signals(
         cyb_pool_idx = etf_names.index("创业") if "创业" in etf_names else -1
         if (cfg.crash_enabled and crash_now and t >= crash_held_until
                 and cyb_pool_idx >= 0):
+            if sat_pos >= 0:
+                # 分档组合被恐慌抄底接管: 先清组合双腿, 再走标准抄底入场
+                nav *= (1 - cfg.commission - cfg.slippage)
+                actions.append((t, pos, -1, "恐慌换仓"))
+                pos = -1; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
             if pos != cyb_pool_idx:
                 crash_held_until = t + cfg.crash_lock
                 alloc = min(max(float(cfg.crash_alloc), 0.0), 1.0)
@@ -705,6 +740,83 @@ def compute_signals(
             # (锁仓期内豁免, 避免抄底仓位次日被门卖掉)
             if pos >= 0:
                 sw = True; np_pos = -1; streak = 0; reason = "绝对动量空仓"
+        elif sat_pos >= 0:
+            # ── 分档切换组合 (核心+卫星): 双腿风控 / 升级全切 / 卫星回撤 / 卫星追新 ──
+            base, sat = pos, sat_pos
+            entry_base, entry_sat = hs, sat_hs
+            cost = cfg.commission + cfg.slippage
+            g_sb = ms[sat] - ms[base]
+            g_bs = ms[base] - ms[sat]
+            hd_sat = t - sat_hs
+            pb = _leg_pnl(base, entry_base, t)
+            ps = _leg_pnl(sat, entry_sat, t)
+            accel_b = (cfg.accel_enabled
+                       and not np.isnan(accel_th_mat[base, t])
+                       and mom10_mat[base, t] > accel_th_mat[base, t])
+            accel_s = (cfg.accel_enabled
+                       and not np.isnan(accel_th_mat[sat, t])
+                       and mom10_mat[sat, t] > accel_th_mat[sat, t])
+            stop_b = t >= crash_held_until and pb <= stop_line(base, t)
+            stop_s = t >= crash_held_until and ps <= stop_line(sat, t)
+
+            if stop_b and stop_s:
+                nav *= (1 - cost)                      # 双腿全卖 → 空仓
+                actions.append((t, base, -1, "组合止损"))
+                pos = -1; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                streak = 0
+            elif stop_b:
+                nav *= (1 - cost * sat_alloc)          # 卖核心半仓 → 全持卫星
+                actions.append((t, base, sat, "核心止损"))
+                pos = sat; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(sat, entry_sat, t, nav); hs = entry_sat
+                streak = 0
+            elif stop_s:
+                nav *= (1 - cost * sat_alloc)          # 卖卫星半仓 → 全持核心
+                actions.append((t, sat, base, "卫星止损"))
+                sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(base, entry_base, t, nav)
+                streak = 0
+            elif accel_b and accel_s:
+                nav *= (1 - cost)                      # 双腿止盈 → 空仓
+                actions.append((t, base, -1, "组合止盈"))
+                pos = -1; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                streak = 0
+            elif accel_b:
+                nav *= (1 - cost * sat_alloc)          # 核心止盈 → 全持卫星
+                actions.append((t, base, sat, "核心止盈"))
+                pos = sat; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(sat, entry_sat, t, nav); hs = entry_sat
+                streak = 0
+            elif accel_s:
+                nav *= (1 - cost * sat_alloc)          # 卫星止盈 → 全持核心
+                actions.append((t, sat, base, "卫星止盈"))
+                sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(base, entry_base, t, nav)
+                streak = 0
+            elif g_sb >= cfg.fast_full_gap:
+                nav *= (1 - cost * sat_alloc) ** 2     # 卖核心半仓+买卫星半仓 → 全切卫星
+                actions.append((t, base, sat, "分档升级全切"))
+                pos = sat; sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(sat, entry_sat, t, nav); hs = entry_sat
+                streak = 0
+            elif g_bs >= cfg.min_gap and hd_sat >= cfg.min_hold:
+                nav *= (1 - cost * sat_alloc)          # 核心重新领先: 卖卫星半仓 → 全持核心
+                actions.append((t, sat, base, "卫星回撤"))
+                sat_pos = -1; sat_alloc = 0.0; sat_hs = -1
+                hn = _resolve_combo_to(base, entry_base, t, nav)
+                streak = 0
+            elif (ti != base and ti != sat and not ti_blocked
+                    and t >= crash_held_until and streak >= cfg.confirm_days):
+                gap_ts = ms[ti] - ms[sat]
+                fast_ts = gap_ts >= cfg.exception_gap
+                if fast_ts and cfg.exception_gap_max > 0 and gap_ts >= cfg.exception_gap_max:
+                    fast_ts = False
+                if ((fast_ts and hd_sat >= cfg.fast_min_hold)
+                        or (hd_sat >= cfg.min_hold and gap_ts >= cfg.min_gap)):
+                    nav *= (1 - cost * sat_alloc) ** 2 # 卫星腿追新第一名
+                    actions.append((t, sat, ti, "卫星追新"))
+                    sat_pos = ti; sat_hs = t
+                    streak = 0
         elif pos == -1:
             if t < sh_cash_block_until:
                 pass  # 空仓冷却期内, 禁止再入场 (恐慌抄底走独立分支, 不受影响)
@@ -741,7 +853,16 @@ def compute_signals(
             elif not trend_ok(ti, t):
                 pass  # 趋势门: 候选低于自身长均线, 不切换
             elif fast_gap and met and hd >= cfg.fast_min_hold:
-                sw = True; np_pos = ti; streak = 0; reason = ">3%切换"
+                if (cfg.fast_lane_staged and cfg.fast_full_gap > cfg.exception_gap
+                        and gap < cfg.fast_full_gap):
+                    # 分档切换: gap∈[exception_gap, fast_full_gap) 切50% → 核心+卫星组合
+                    # (卫星=新第一名; 核心保留原仓, 双腿各自独立风控)
+                    nav *= (1 - (cfg.commission + cfg.slippage) * 0.5) ** 2
+                    actions.append((t, pos, ti, ">3%切换(50%)"))
+                    sat_pos = ti; sat_alloc = 0.5; sat_hs = t
+                    streak = 0
+                else:
+                    sw = True; np_pos = ti; streak = 0; reason = ">3%切换"
             elif hd >= cfg.min_hold and gap >= cfg.min_gap and met:
                 sw = True; np_pos = ti; streak = 0; reason = "正常切换"
         elif (cfg.abs_stop_loss and pos >= 0 and pnl <= stop_line(pos, t)
@@ -759,6 +880,7 @@ def compute_signals(
         if sw:
             cost = cfg.commission + cfg.slippage
             crash_alloc_now = 0.0   # 任何正常动作清理抄底叠加仓, 归并为新主仓全仓
+            sat_pos = -1; sat_alloc = 0.0; sat_hs = -1   # 任何全仓动作清理分档组合双腿
             if pos >= 0: nav *= (1 - cost)
             elif cfg.cash_park_code: nav *= (1 - cost) # 空仓停泊: 卖出停泊标的计费
             if np_pos >= 0: nav *= (1 - cost); hs = t; hn = nav
@@ -784,7 +906,9 @@ def compute_signals(
 def compute_returns(actions: list, price_mat: np.ndarray,
                     etf_names: List[str], n_days: int,
                     start_day: int = 0) -> dict:
-    """从信号序列和价格矩阵重建净值。手续费已在compute_signals中处理, 此处不再重复扣除。"""
+    """从信号序列和价格矩阵重建净值。手续费已在compute_signals中处理, 此处不再重复扣除。
+    注意: 不支持 fast_lane_staged 组合仓语义 (仅 backtest/runner.py 旧路径使用;
+    研究口径一律以 compute_signals 返回的 nav_log 为准)。"""
     nav = 1.0; pos = -1
     hs = -1; hn = 1.0
     trades = []

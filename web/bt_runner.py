@@ -104,6 +104,8 @@ def run_backtest(params):
         crash_alloc=float(params.get("crash_alloc", 100)) / 100.0,
         top_k=int(params.get("top_k", 1)),
         mom_skip=int(params.get("mom_skip", 0)),
+        fast_lane_staged=bool(params.get("fast_lane_staged", False)),
+        fast_full_gap=float(params.get("fast_full_gap", 5.0)),
     )
 
     # 数据: 起始日往前拉预热天数

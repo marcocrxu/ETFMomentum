@@ -27,6 +27,9 @@ def replay_nav(actions, price_mat, etf_names, cfg):
     pos = -1
     crash_alloc = 0.0
     crash_base = -1
+    sat = -1          # 分档切换组合: 卫星腿
+    sat_base = -1
+    sat_alloc = 0.0
     cyb = etf_names.index("创业") if "创业" in etf_names else -1
     c = cfg.commission + cfg.slippage
     act_map = {}
@@ -46,6 +49,15 @@ def replay_nav(actions, price_mat, etf_names, cfg):
                 if not np.isnan(c0) and not np.isnan(c1) and c0 > 0:
                     dr += crash_alloc * (c1 / c0 - 1)
                 nav *= (1 + dr)
+            elif sat_alloc > 0:
+                dr = 0.0
+                b0, b1 = price_mat[sat_base, t-1], price_mat[sat_base, t]
+                if not np.isnan(b0) and not np.isnan(b1) and b0 > 0:
+                    dr += (1 - sat_alloc) * (b1 / b0 - 1)
+                s0, s1 = price_mat[sat, t-1], price_mat[sat, t]
+                if not np.isnan(s0) and not np.isnan(s1) and s0 > 0:
+                    dr += sat_alloc * (s1 / s0 - 1)
+                nav *= (1 + dr)
             elif pos >= 0:
                 p0, p1 = price_mat[pos, t-1], price_mat[pos, t]
                 if not np.isnan(p0) and not np.isnan(p1) and p0 > 0:
@@ -60,9 +72,33 @@ def replay_nav(actions, price_mat, etf_names, cfg):
                 crash_alloc = alloc
                 crash_base = old_p if old_p >= 0 else -1
                 pos = new_p
+            elif reason == "恐慌换仓":
+                nav *= (1 - c)          # 分档组合双腿全卖
+                pos = -1
+                sat = -1; sat_alloc = 0.0; sat_base = -1
+            elif reason == ">3%切换(50%)":
+                nav *= (1 - c * 0.5) ** 2
+                sat = new_p; sat_base = old_p; sat_alloc = 0.5
+            elif reason in ("分档升级全切", "核心止损", "核心止盈"):
+                nav *= (1 - c * sat_alloc) ** 2 if reason == "分档升级全切" \
+                    else (1 - c * sat_alloc)
+                pos = new_p if new_p >= 0 else -1
+                sat = -1; sat_alloc = 0.0; sat_base = -1
+            elif reason in ("卫星回撤", "卫星止损", "卫星止盈"):
+                nav *= (1 - c * sat_alloc)
+                pos = sat_base if sat_base >= 0 else pos
+                sat = -1; sat_alloc = 0.0; sat_base = -1
+            elif reason == "卫星追新":
+                nav *= (1 - c * sat_alloc) ** 2
+                sat = new_p
+            elif reason in ("组合止损", "组合止盈"):
+                nav *= (1 - c)
+                pos = -1
+                sat = -1; sat_alloc = 0.0; sat_base = -1
             else:
                 crash_alloc = 0.0
                 crash_base = -1
+                sat = -1; sat_alloc = 0.0; sat_base = -1
                 if old_p >= 0:
                     nav *= (1 - c)
                 if new_p is not None and new_p >= 0:

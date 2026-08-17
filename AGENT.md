@@ -96,6 +96,7 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 | abs_stop_loss | True | 默认开 | 补"仍第一名时不止损"盲区（2026-06 纳指 -9.79% 成因） |
 | stop_cooldown / accel_cooldown | 0 | 关闭 | 消融负优化，维持 |
 | fast_min_hold | 0 | 否决 | E2 补遗：拖一天只亏更多 |
+| fast_lane_staged (3%→50%/5%→100% 分档切换) | False | 否决 | 2026-08-17 补遗2：卖飞数据方向相反，3~5% 档是最优质档；全档位/双窗口大幅负优化 |
 | top_k / mom_skip | 1 / 0 | 开关留档 | 均实测负优化 |
 | sh_cash_cooldown | 3 | 维持，但标记"孤峰" | A3：优势仅 +4.2%/+0.03 |
 | accel_sigma | 3.0 | 峰，维持 | A1 平台可信 |
