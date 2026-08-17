@@ -97,6 +97,7 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 | stop_cooldown / accel_cooldown | 0 | 关闭 | 消融负优化，维持 |
 | fast_min_hold | 0 | 否决 | E2 补遗：拖一天只亏更多 |
 | fast_lane_staged (3%→50%/5%→100% 分档切换) | False | 否决 | 2026-08-17 补遗2：卖飞数据方向相反，3~5% 档是最优质档；全档位/双窗口大幅负优化 |
+| fast_lane_ma (快速通道追涨闸门) | 0(关) | 否决默认开 | 2026-08-17 补遗4：被拦的低MA60追涨恰是历史最优档(83%胜率/+4.5%)，全档位负优化 |
 | top_k / mom_skip | 1 / 0 | 开关留档 | 均实测负优化 |
 | sh_cash_cooldown | 3 | 维持，但标记"孤峰" | A3：优势仅 +4.2%/+0.03 |
 | accel_sigma | 3.0 | 峰，维持 | A1 平台可信 |

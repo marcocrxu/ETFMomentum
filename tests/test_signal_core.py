@@ -422,3 +422,73 @@ def test_staged_combo_crash_takeover():
     rep = replay_nav(actions, inp["price_mat"], inp["etf_names"], cfg)
     vs = _expected_vs(inp)
     np.testing.assert_allclose(rep[vs:], nav_log, atol=1e-10)
+
+
+# ── 10. 快速通道追涨闸门 (fast_lane_ma) ──
+def _bounce_below_ma_inputs(n=200):
+    """纳指: 常平(被持有, mom20≈0); 黄金: 100天匀速阴跌(现价远低于MA60),
+    t=120 起 2 天急反弹制造 ≥3pp gap; 创业: 常平"""
+    nz = np.zeros(n)
+    gold = np.zeros(n)
+    for i in range(20, 120):
+        gold[i] = -0.012 if i % 2 == 0 else 0.002     # 锯齿阴跌, 均价-0.005/天
+    gold[120:122] = 0.065                              # 2天急反弹
+    gold[122:] = 0.0                                   # 其后走平
+    prices = {
+        "纳指": 100 * np.exp(np.cumsum(nz)),
+        "黄金": 100 * np.exp(np.cumsum(gold)),
+        "创业": np.full(n, 100.0),
+    }
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    # 场景前提: 反弹次日 gap≥3 且现价 < MA60 (闸门应拦); 其后价格随MA60下移而上穿(闸门应放行)
+    t = 121
+    g_mom = inp["mom20_mat"][1, t] - inp["mom20_mat"][0, t]
+    ma60 = np.mean(inp["price_mat"][1, t - 59: t + 1])
+    assert g_mom >= 3, f"场景未制造≥3pp gap: {g_mom:.2f}"
+    assert inp["price_mat"][1, t] < ma60, f"反弹次日黄金应在MA60之下: {inp['price_mat'][1, t]:.3f} vs {ma60:.3f}"
+    return inp
+
+
+def _bounce_cfg(**over):
+    base = dict(accel_enabled=False, sh_cash=False, crash_enabled=False)
+    base.update(over)
+    return SignalConfig(**base)
+
+
+def test_fast_ma_gate_blocks_while_below_ma60():
+    """默认(60): 挑战者低于自身MA60期间不追涨; 高min_hold下无慢通道兜底, 快速切换被推迟"""
+    inp = _bounce_below_ma_inputs()
+    cfg_on = _bounce_cfg(min_hold=200, fast_lane_ma=60)
+    cfg_off = _bounce_cfg(min_hold=200, fast_lane_ma=0)
+    a_on, _, _ = compute_signals(cfg_on, **inp)
+    a_off, _, _ = compute_signals(cfg_off, **inp)
+    t_off = next(a[0] for a in a_off if a[3] == ">3%切换")
+    fast_on = [a[0] for a in a_on if a[3] == ">3%切换"]
+    assert fast_on, "闸门开启后价格上穿MA60应恢复快速通道"
+    assert fast_on[0] > t_off, \
+        f"闸门应推迟追涨: 关闭时t={t_off}切, 开启时t={fast_on[0]}切 (低于MA60期间不得追)"
+
+
+def test_fast_ma_gate_falls_back_to_normal_lane():
+    """默认min_hold(10)下: 被闸门拦住的快速切换落回慢通道 (持有≥10天正常切换)"""
+    inp = _bounce_below_ma_inputs()
+    cfg = _bounce_cfg(fast_lane_ma=60)              # min_hold=10
+    actions, _, _ = compute_signals(cfg, **inp)
+    first_sw = next(a for a in actions if a[3] in (">3%切换", "正常切换"))
+    assert first_sw[3] == "正常切换", \
+        f"低于MA60时不应走快速通道, 应落回慢通道: {first_sw[3]}"
+
+
+def test_fast_ma_gate_passes_above_ma60():
+    """挑战者高于自身MA60: 闸门放行, 快速通道正常触发"""
+    n = 200
+    nz = np.zeros(n)
+    gold = np.zeros(n)
+    gold[100:] = 0.003                              # 黄金 t=100 起持续上涨 (价格高于MA60)
+    prices = {"纳指": 100 * np.exp(np.cumsum(nz)), "黄金": 100 * np.exp(np.cumsum(gold)),
+              "创业": np.full(n, 100.0)}
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    cfg = _bounce_cfg(fast_lane_ma=60, min_gap=2.9)  # 抬高慢通道门槛, 让快速通道先触发
+    actions, _, _ = compute_signals(cfg, **inp)
+    assert any(a[3] == ">3%切换" for a in actions), \
+        f"高于MA60的挑战者应被放行: {[a[3] for a in actions]}"

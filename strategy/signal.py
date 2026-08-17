@@ -28,6 +28,7 @@ class SignalConfig:
     exception_gap_sigma: float = 0.0 # 快速通道σ自适应: 门槛=max(exception_gap, k×滚动60日gapσ) (0=关闭)
     fast_lane_staged: bool = False  # 快速通道分档切换: gap∈[exception_gap, fast_full_gap) 切50%成核心+卫星组合, ≥fast_full_gap 切100% (0=关闭=旧行为; 仅Top-1路径)
     fast_full_gap: float = 5.0      # 分档切换全切档位 (仅 fast_lane_staged=True 时生效)
+    fast_lane_ma: int = 0            # 快速通道追涨闸门: 挑战者现价须高于自身MA(N)才走快速通道 (0=关闭; 2026-08-17 消融为负优化默认关: 被拦切换恰是历史最优档83%胜率/均盈+4.5%; 被拦时落回慢通道=min_hold后正常切换)
     commission: float = 0.0001     # 手续费率(单边)
     slippage: float = 0.0          # 滑点/冲击成本(单边)
     accel_sigma: float = 3.0       # 加速止盈 σ
@@ -162,6 +163,15 @@ def _compute_signals_topk(
         vol_mat = (pre_mats or {}).get("vol")
         if vol_mat is None:
             vol_mat = calc_vol20(price_mat)
+
+    # ── 快速通道追涨闸门均线 (与 Top-1 同口径) ──
+    ma_gate_mat = None
+    if cfg.fast_lane_ma > 0:
+        ma_gate_mat = (pre_mats or {}).get("ma_fast")
+        if ma_gate_mat is None:
+            ma_gate_mat = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                ma_gate_mat[_i] = pd.Series(price_mat[_i]).rolling(cfg.fast_lane_ma).mean().values
 
     def stop_line(i, t):
         """止损线: stop_sigma>0 时 = -k×标的自身20日波动率; floor 时固定线为下限(只放宽不收紧); 缺失回退固定 stop_loss"""
@@ -302,7 +312,9 @@ def _compute_signals_topk(
                     if j is not None:
                         gap = score[j] - score[i]
                         if (gap >= cfg.exception_gap and hd >= cfg.fast_min_hold
-                                and (cfg.exception_gap_max <= 0 or gap < cfg.exception_gap_max)):
+                                and (cfg.exception_gap_max <= 0 or gap < cfg.exception_gap_max)
+                                and (cfg.fast_lane_ma <= 0 or np.isnan(ma_gate_mat[j, t])
+                                     or price_mat[j, t] > ma_gate_mat[j, t])):
                             reason = ">3%切换"
                         elif hd >= cfg.min_hold and gap >= cfg.min_gap:
                             reason = "正常切换"
@@ -481,6 +493,16 @@ def compute_signals(
             for _i in range(price_mat.shape[0]):
                 ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
             ma_mat = ma_full
+
+    # ── 快速通道追涨闸门均线 (挑战者须高于自身MA(N)才走快速通道; 优先用全量历史预计算值防冷启动,
+    #    内部冷启动兜底时窗口前N-1天为NaN→闸门放行, 仅影响极短回测窗口起点) ──
+    ma_gate_mat = None
+    if cfg.fast_lane_ma > 0:
+        ma_gate_mat = (pre_mats or {}).get("ma_fast")
+        if ma_gate_mat is None:
+            ma_gate_mat = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                ma_gate_mat[_i] = pd.Series(price_mat[_i]).rolling(cfg.fast_lane_ma).mean().values
 
     def stop_line(i, t):
         """止损线: stop_sigma>0 时 = -k×标的自身20日波动率(不同标的不同线);
@@ -846,6 +868,12 @@ def compute_signals(
                                       cfg.exception_gap_sigma * float(np.nanstd(gap_hist)))
             if fast_gap and cfg.exception_gap_max > 0 and gap >= cfg.exception_gap_max:
                 fast_gap = False
+            if fast_gap and cfg.fast_lane_ma > 0:
+                # 追涨闸门: 挑战者现价须高于自身MA(N), 下跌反弹中继不追 (被拦则落回慢通道)
+                _px = price_mat[ti, t]
+                _ma = ma_gate_mat[ti, t]
+                if not np.isnan(_px) and not np.isnan(_ma) and _px <= _ma:
+                    fast_gap = False
             if pnl <= stop_line(pos, t):
                 sw = True; np_pos = ti; streak = 0; reason = "止损"
             elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:

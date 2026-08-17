@@ -106,6 +106,7 @@ def run_backtest(params):
         mom_skip=int(params.get("mom_skip", 0)),
         fast_lane_staged=bool(params.get("fast_lane_staged", False)),
         fast_full_gap=float(params.get("fast_full_gap", 5.0)),
+        fast_lane_ma=int(params.get("fast_lane_ma", 0)),
     )
 
     # 数据: 起始日往前拉预热天数
@@ -219,6 +220,12 @@ def run_backtest(params):
         for _i in range(price_mat.shape[0]):
             _ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
         pre_mats["ma"] = _ma_full[:, _pre_days:]
+    if cfg.fast_lane_ma > 0:
+        # 快速通道追涨闸门: 全量历史预计算 MA(N) 再切片, 防窗口起点冷启动
+        _maf_full = np.full(price_mat.shape, np.nan)
+        for _i in range(price_mat.shape[0]):
+            _maf_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.fast_lane_ma).mean().values
+        pre_mats["ma_fast"] = _maf_full[:, _pre_days:]
     if bond_full is not None:
         pre_mats["park"] = bond_full[_pre_days:]
     if cfg.fip_tiebreak:
