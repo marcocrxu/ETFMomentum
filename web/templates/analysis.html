@@ -1229,5 +1229,32 @@ const CRASH = {
   window.addEventListener('resize', function(){ charts.forEach(function(c){ c.resize(); }); });
 })();
 </script>
+
+    <div class="card analysis-card">
+      <div class="card-header"><h2>🌊 波动率归一化该用在哪？窄池 vs 广池 交叉消融（2026-08-18）</h2></div>
+      <div class="analysis-body">
+        <p><strong>问题：</strong>波动率（score = 动量/波动率）在 yanyan 广池里是正贡献，在主引擎窄池里是大负优化，边界在哪？</p>
+        <table>
+          <thead><tr><th>池</th><th>原始动量(关)</th><th>动量/波动率(开)</th><th>vol 效果</th></tr></thead>
+          <tbody>
+            <tr><td>窄池 3 (基线)</td><td>+3595.1% / DD-21.5% / Cal 2.09</td><td>+1911.4% / -23.5% / 1.53</td><td class="num-neg">-1684pp 大负</td></tr>
+            <tr><td>中池 5</td><td>+1945.5% / -34.7% / 1.05</td><td>+1188.8% / -36.5% / 0.82</td><td class="num-neg">-757pp 负</td></tr>
+            <tr><td>广池 8</td><td>+1067.1% / -34.6% / 0.83</td><td>+988.8% / -36.1% / 0.77</td><td class="num-neg">-78pp 微负</td></tr>
+            <tr><td>广池 14</td><td>+440.4% / -43.1% / 0.44</td><td>+811.9% / -35.5% / 0.72</td><td class="num-pos">+371pp 转正</td></tr>
+          </tbody>
+        </table>
+        <h3>机理</h3>
+        <ul>
+          <li>波动率归一的作用是<b>重排第一</b>：窄池 3 里它把 top1 从创业(高波动 alpha 源)挪给黄金(慢资产)——top1 天数创业 -181 天、黄金 +168 天，而主引擎快速通道吃的正是创业制造的原始动量差；</li>
+          <li>主引擎风控在外挂模块（上证空仓/止损/加速止盈），vol 再管风险 = 双重计费；且阈值(3% gap)长在原始动量尺度上，排名却用 vol 口径 → 口径分离内耗；</li>
+          <li>广池 14 才转正：11 只以上池子的波动率差距大到"动量 ≈ 波动的副产品"，vol 把"赌波动"变成"买质量"，此时价值压过冲突成本；</li>
+          <li><b>但广池 14 即使开 vol (811.9%/0.72) 仍远差于窄池 3 (3595%/2.09)</b>——vol 是广池止痛药，不是解药，F4「禁扩池」纪律不变。</li>
+        </ul>
+        <h3>结论</h3>
+        <p>波动率归一化是<b>「广池 + 无退出风控」策略的必需品（yanyan），对「窄池 + 完整风控栈」策略是毒药（主引擎）</b>。主引擎维持窄池 3 + 原始动量即最优；yanyan 维持 score=mom20/vol20。</p>
+      </div>
+    </div>
+
 </body>
 </html>
+
