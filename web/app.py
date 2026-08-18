@@ -19,6 +19,10 @@ def analysis():
 def yanyan():
     return render_template("yanyan.html")
 
+@app.route("/leaderboard")
+def leaderboard():
+    return render_template("leaderboard.html")
+
 @app.route("/api/yanyan/run", methods=["POST"])
 def api_yanyan_run():
     from web.yanyan_runner import run_yanyan
@@ -27,6 +31,18 @@ def api_yanyan_run():
     if "error" in result:
         return jsonify({"success": False, "error": result["error"]}), 400
     return jsonify({"success": True, "data": result})
+
+@app.route("/api/leaderboard/run", methods=["POST"])
+def api_leaderboard_run():
+    from web.leaderboard import run_leaderboard
+    params = request.get_json(silent=True) or {}
+    return jsonify({"success": True, "data": run_leaderboard(params)})
+
+@app.route("/api/leaderboard/last")
+def api_leaderboard_last():
+    from web.leaderboard import load_last
+    data = load_last()
+    return jsonify({"success": data is not None, "data": data})
 
 @app.route("/api/bt/run", methods=["POST"])
 def api_bt_run():

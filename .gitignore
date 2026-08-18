@@ -13,3 +13,6 @@ web/mytrack_data.json
 
 # 审计脚本运行日志 (与 out/*.json 内容重复)
 audit/out/*.log
+
+# 打榜最近一次结果缓存
+web/leaderboard_last.json

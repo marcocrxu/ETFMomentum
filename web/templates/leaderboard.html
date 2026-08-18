@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>打榜 — 参数组合排行榜</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    .lb-filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .lb-filters .param-group { margin: 0; }
+    .rank-num { color: #8b92a8; font-weight: 700; }
+    .rank-top { color: #ffd700; font-weight: 700; }
+    .strategy-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .badge-etf { background: rgba(233,69,96,.15); color: #e94560; }
+    .badge-yanyan { background: rgba(76,175,80,.15); color: #4caf50; }
+    .lb-meta { color: #8b92a8; font-size: 13px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <header class="page-header">
+      <h1>🏆 参数组合打榜</h1>
+      <p class="subtitle">主引擎 + yanyan 策略参数网格批量回测排行 · 支持按策略过滤</p>
+    </header>
+
+    <nav class="page-nav">
+      <a href="/">📊 回测</a>
+      <a href="/analysis">🔬 策略分析</a>
+      <a href="/yanyan">🛡️ yanyan</a>
+      <a href="/leaderboard" class="active">🏆 打榜</a>
+    </nav>
+
+    <section class="card params-card">
+      <div class="card-header"><h2>⚙️ 榜单参数</h2></div>
+      <div class="lb-filters">
+        <div class="param-group">
+          <label class="group-label">策略过滤</label>
+          <select id="lb-strategy">
+            <option value="all" selected>全部 (主引擎 + yanyan)</option>
+            <option value="yanyan">仅 yanyan</option>
+            <option value="etf">仅主引擎 ETF</option>
+          </select>
+        </div>
+        <div class="param-group">
+          <label class="group-label">排序指标</label>
+          <select id="lb-metric">
+            <option value="calmar" selected>Calmar</option>
+            <option value="total_ret">累计收益</option>
+            <option value="ann_ret">年化收益</option>
+            <option value="sharpe">夏普</option>
+            <option value="mdd">最大回撤(越小越好)</option>
+          </select>
+        </div>
+        <div class="param-group">
+          <label class="group-label">yanyan 标的池</label>
+          <select id="lb-universe">
+            <option value="" selected>全池10只</option>
+            <option value="沪深300,中证500,创业板,红利低波,纳指,港股创新药">精简TOP6</option>
+            <option value="纳指,港股创新药,黄金">跨境黄金3只</option>
+          </select>
+        </div>
+        <div class="param-group">
+          <label class="group-label">起始日期</label>
+          <input id="start_date" type="date" value="2016-07-07">
+        </div>
+        <div class="param-group">
+          <label class="group-label">结束日期</label>
+          <input id="end_date" type="date" value="2026-08-12">
+        </div>
+        <div class="param-actions" style="margin:0">
+          <button type="button" class="btn btn-primary" id="btn-run">🏆 跑榜</button>
+        </div>
+      </div>
+      <div class="error-banner" id="error-banner" style="display:none"></div>
+      <div class="lb-meta" id="lb-meta" style="display:none"></div>
+    </section>
+
+    <section class="card table-card" id="table-card" style="display:none">
+      <div class="card-header"><h2>📋 排行榜</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>策略</th><th>参数组合</th><th>累计收益</th><th>年化</th>
+              <th>最大回撤</th><th>Calmar</th><th>夏普</th><th>交易</th>
+            </tr>
+          </thead>
+          <tbody id="lb-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="loading-overlay" id="loading" style="display:none">
+    <div class="loading-box"><div class="spinner"></div><p id="loading-text">打榜计算中 (全部组合约需 1~4 分钟)...</p></div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/leaderboard.js') }}"></script>
+</body>
+</html>
