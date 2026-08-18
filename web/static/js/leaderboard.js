@@ -19,6 +19,18 @@ function getToken() {
   return document.getElementById('lb-token').value.trim();
 }
 
+function storedToken() {
+  const t = localStorage.getItem('lb_token') || '';
+  return t || getToken();
+}
+
+function persistToken() {
+  const t = getToken();
+  if (t) {
+    try { localStorage.setItem('lb_token', t); } catch (e) { /* 忽略 */ }
+  }
+}
+
 async function showCode(itemId) {
   const box = document.getElementById('code-box');
   if (!getToken()) { showError('请先填写提交 token'); return; }
@@ -62,6 +74,7 @@ async function runLeaderboard() {
       return;
     }
     lastData = json.data;
+    persistToken();
     render();
   } catch (e) {
     if (e.name !== 'AbortError') showError('请求失败: ' + e.message);
@@ -90,6 +103,7 @@ async function submitCustom() {
       msg.textContent = '提交失败: ' + (json.error || '');
       return;
     }
+    persistToken();
     msg.textContent = '已入队 #' + json.data.id + ', claude+kimi 生成中 (约 2~5 分钟)...';
     document.getElementById('nl-desc').value = '';
     refreshQueue();
@@ -123,7 +137,7 @@ async function refreshQueue() {
       }
       if (it.status === 'failed' && it.error) detail += ' · ' + it.error;
       const links = (it.status === 'done' && it.file)
-        ? ` <a class="open-link" href="/lb/view/${it.id}?token=${encodeURIComponent(getToken())}" target="_blank">详情</a>`
+        ? ` <a class="open-link" href="/lb/view/${it.id}?token=${encodeURIComponent(storedToken())}" target="_blank">详情</a>`
           + ` <a class="open-link" href="javascript:void(0)" onclick="showCode('${it.id}')">代码</a>` : '';
       return `<div class="queue-item">
         <span class="${statusCls}">[${detail}]</span> #${it.id} ${it.created} · ${it.description.slice(0, 50)}${links}
@@ -179,7 +193,7 @@ function render() {
       if (r.strategy === 'yanyan') link = `<a class="open-link" href="/yanyan" target="_blank">打开</a>`;
       else if (r.strategy === 'etf') link = `<a class="open-link" href="/" target="_blank">打开</a>`;
       else if (r.strategy === 'custom' && r.file)
-        link = `<a class="open-link" href="/lb/view/${r.id}?token=${encodeURIComponent(getToken())}" target="_blank">详情</a>`
+        link = `<a class="open-link" href="/lb/view/${r.id}?token=${encodeURIComponent(storedToken())}" target="_blank">详情</a>`
           + ` <a class="open-link" href="javascript:void(0)" onclick="showCode('${r.id}')">代码</a>`;
       return `
       <tr>

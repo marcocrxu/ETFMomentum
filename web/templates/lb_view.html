@@ -49,7 +49,7 @@
   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
   <script>
     const ITEM_ID = "{{ item_id }}";
-    const TOKEN = "{{ token }}";
+    const TOKEN = "{{ token }}" || (localStorage.getItem('lb_token') || '');
     let navChart = null, ddChart = null, yearlyChart = null;
 
     function buildChartData(r) {
