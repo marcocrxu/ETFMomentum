@@ -38,6 +38,7 @@ class SignalConfig:
     slippage: float = 0.0          # 滑点/冲击成本(单边)
     accel_sigma: float = 3.0       # 加速止盈 σ
     accel_enabled: bool = True     # 加速止盈开关
+    accel_exempt_names: str = ""    # 免加速止盈的标的(逗号分隔, 如 创业): 高波动标的的mom10尖峰是常态, 止盈=卖飞 (2026-08-18 研究)
     crash_sigma: float = -2.5      # 恐慌抄底 σ
     crash_enabled: bool = True     # 恐慌抄底开关
     crash_lock: int = 7            # 抄底锁仓天数 (与 web UI / bt_runner 默认一致)
@@ -947,6 +948,7 @@ def compute_signals(
             # 不再硬扛 (2026-06 纳指 -9.79% 远超 -5% 线的成因)
             sw = True; np_pos = -1; streak = 0; reason = "绝对止损"
         elif (cfg.accel_enabled and pos >= 0
+                and etf_names[pos] not in {x.strip() for x in cfg.accel_exempt_names.split(",") if x.strip()}
                 and not np.isnan(accel_th_mat[pos, t])
                 and mom10_mat[pos, t] > accel_th_mat[pos, t]):
             sw = True; np_pos = -1; streak = 0; reason = "加速止盈"

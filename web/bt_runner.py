@@ -96,6 +96,7 @@ def run_backtest(params):
         defensive_enabled=params.get("defensive_on", False),
         risk_adj_mom=params.get("risk_adj_on", False),
         accel_cooldown=int(params.get("accel_cooldown", 0)),
+        accel_exempt_names=str(params.get("accel_exempt_names", "")),
         accel_cooldown_gold_only=bool(params.get("accel_cooldown_gold_only", False)),
         accel_reentry_gate=bool(params.get("accel_reentry_gate", False)),
         stop_cooldown=int(params.get("stop_cooldown", 0)),
