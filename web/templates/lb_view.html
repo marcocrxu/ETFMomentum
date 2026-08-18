@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>自定义策略详情 — 打榜</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <div class="page-wrapper">
+    <header class="page-header">
+      <h1>🤖 自定义策略详情</h1>
+      <p class="subtitle" id="lbv-subtitle">回测窗口固定 2016-01-01 ~ 2026-07-31</p>
+    </header>
+    <nav class="page-nav">
+      <a href="/">📊 回测</a>
+      <a href="/yanyan">🛡️ yanyan</a>
+      <a href="/leaderboard">🏆 打榜</a>
+    </nav>
+
+    <section class="kpi-grid" id="kpi-grid" style="display:none">
+      <div class="kpi"><div class="kpi-value" id="kpi-total">--</div><div class="kpi-label">累计收益</div></div>
+      <div class="kpi"><div class="kpi-value" id="kpi-ann">--</div><div class="kpi-label">年化收益</div></div>
+      <div class="kpi"><div class="kpi-value" id="kpi-dd">--</div><div class="kpi-label">最大回撤</div></div>
+      <div class="kpi"><div class="kpi-value" id="kpi-calmar">--</div><div class="kpi-label">Calmar</div></div>
+      <div class="kpi"><div class="kpi-value" id="kpi-sharpe">--</div><div class="kpi-label">夏普比率</div></div>
+      <div class="kpi"><div class="kpi-value" id="kpi-trades">--</div><div class="kpi-label">交易笔数</div></div>
+    </section>
+
+    <section class="charts-grid" id="charts-grid" style="display:none">
+      <div class="card chart-card"><div class="card-header"><h2>📈 净值曲线</h2></div><div class="chart" id="nav-chart"></div></div>
+      <div class="card chart-card"><div class="card-header"><h2>📉 回撤曲线</h2></div><div class="chart" id="drawdown-chart"></div></div>
+      <div class="card chart-card"><div class="card-header"><h2>📅 年度收益</h2></div><div class="chart" id="yearly-chart"></div></div>
+    </section>
+
+    <section class="card table-card" id="table-card" style="display:none">
+      <div class="card-header"><h2>📋 决策记录</h2>
+        <a class="btn btn-secondary" id="btn-code" href="/lb/code/{{ item_id }}?token={{ token }}" target="_blank">查看代码</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日期</th><th>决策</th><th>原因</th></tr></thead>
+          <tbody id="trades-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <script src="{{ url_for('static', filename='lib/echarts.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script>
+    const ITEM_ID = "{{ item_id }}";
+    const TOKEN = "{{ token }}";
+    let navChart = null, ddChart = null, yearlyChart = null;
+
+    function buildChartData(r) {
+      const nav = r.nav_log || [];
+      const dates = r.dates || [];
+      const drawdown = [];
+      let peak = -Infinity;
+      for (const v of nav) {
+        peak = Math.max(peak, v);
+        drawdown.push(peak > 0 ? +(((v - peak) / peak) * 100).toFixed(2) : 0);
+      }
+      const yearly = r.yearly || {};
+      return { dates, nav, drawdown, yearly, benchmark: null, etf_navs: {} };
+    }
+
+    fetch('/api/leaderboard/custom/result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, id: ITEM_ID })
+    }).then(r => r.json()).then(json => {
+      if (!json.success) {
+        document.getElementById('lbv-subtitle').textContent = '加载失败: ' + (json.error || '');
+        return;
+      }
+      const r = json.data;
+      document.getElementById('lbv-subtitle').textContent =
+        (r.params || '') + ' · 固定窗口 2016-01-01 ~ 2026-07-31';
+      const set = (id, val, cls) => {
+        const el = document.getElementById(id);
+        el.textContent = val == null ? '-' : val;
+        el.className = 'kpi-value ' + (cls || '');
+      };
+      const sign = v => v >= 0 ? 'positive' : 'negative';
+      set('kpi-total', r.total_ret != null ? (r.total_ret >= 0 ? '+' : '') + r.total_ret + '%' : '-', sign(r.total_ret ?? 0));
+      set('kpi-ann', r.ann_ret != null ? (r.ann_ret >= 0 ? '+' : '') + r.ann_ret + '%' : '-', sign(r.ann_ret ?? 0));
+      set('kpi-dd', r.mdd != null ? r.mdd + '%' : '-', 'negative');
+      set('kpi-calmar', r.calmar != null ? r.calmar : '-');
+      set('kpi-sharpe', r.sharpe != null ? r.sharpe : '-');
+      set('kpi-trades', r.trade_count != null ? r.trade_count : '-');
+      document.getElementById('kpi-grid').style.display = 'grid';
+      document.getElementById('charts-grid').style.display = 'grid';
+
+      const d = buildChartData(r);
+      navChart = ChartRenderers.initChart('nav-chart');
+      ddChart = ChartRenderers.initChart('drawdown-chart');
+      yearlyChart = ChartRenderers.initChart('yearly-chart');
+      ChartRenderers.renderNavChart(navChart, d);
+      ChartRenderers.renderDrawdownChart(ddChart, d);
+      ChartRenderers.renderYearlyChart(yearlyChart, d);
+      ChartRenderers.setChartsLinked([navChart, ddChart, yearlyChart], false);
+
+      const decisions = r.decisions || [];
+      document.getElementById('table-card').style.display = 'block';
+      document.getElementById('trades-body').innerHTML = decisions.length === 0
+        ? '<tr><td colspan="3" style="text-align:center;color:#8b92a8;padding:24px">无决策记录 (生成代码未返回 decisions)</td></tr>'
+        : decisions.map(x => `<tr>
+            <td>${x.date || x[0] || '-'}</td>
+            <td>${x.action || x[1] || '-'}</td>
+            <td>${x.reason || x[2] || '-'}</td>
+          </tr>`).join('');
+      setTimeout(() => { navChart && navChart.resize(); ddChart && ddChart.resize(); yearlyChart && yearlyChart.resize(); }, 50);
+    }).catch(e => {
+      document.getElementById('lbv-subtitle').textContent = '加载失败: ' + e.message;
+    });
+  </script>
+</body>
+</html>

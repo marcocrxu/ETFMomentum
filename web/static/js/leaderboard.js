@@ -19,6 +19,24 @@ function getToken() {
   return document.getElementById('lb-token').value.trim();
 }
 
+async function showCode(itemId) {
+  const box = document.getElementById('code-box');
+  if (!getToken()) { showError('请先填写提交 token'); return; }
+  box.style.display = 'block';
+  box.textContent = '加载中...';
+  try {
+    const resp = await fetch('/api/leaderboard/custom/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: getToken(), id: itemId })
+    });
+    const json = await resp.json();
+    box.textContent = json.success ? json.data.code : ('加载失败: ' + (json.error || ''));
+  } catch (e) {
+    box.textContent = '请求失败: ' + e.message;
+  }
+}
+
 async function runLeaderboard() {
   const banner = document.getElementById('error-banner');
   banner.style.display = 'none';
@@ -104,10 +122,11 @@ async function refreshQueue() {
         detail += ` · total ${r.total_ret >= 0 ? '+' : ''}${r.total_ret}% · mdd ${r.mdd}% · cal ${r.calmar}`;
       }
       if (it.status === 'failed' && it.error) detail += ' · ' + it.error;
-      const codeLink = (it.status === 'done' && it.file)
-        ? ` <a class="open-link" href="/lb/code/${it.id}?token=${encodeURIComponent(getToken())}" target="_blank">代码</a>` : '';
+      const links = (it.status === 'done' && it.file)
+        ? ` <a class="open-link" href="/lb/view/${it.id}?token=${encodeURIComponent(getToken())}" target="_blank">详情</a>`
+          + ` <a class="open-link" href="javascript:void(0)" onclick="showCode('${it.id}')">代码</a>` : '';
       return `<div class="queue-item">
-        <span class="${statusCls}">[${detail}]</span> #${it.id} ${it.created} · ${it.description.slice(0, 50)}${codeLink}
+        <span class="${statusCls}">[${detail}]</span> #${it.id} ${it.created} · ${it.description.slice(0, 50)}${links}
       </div>`;
     }).join('');
     // 有未完成项时 10s 后轮询
@@ -160,7 +179,8 @@ function render() {
       if (r.strategy === 'yanyan') link = `<a class="open-link" href="/yanyan" target="_blank">打开</a>`;
       else if (r.strategy === 'etf') link = `<a class="open-link" href="/" target="_blank">打开</a>`;
       else if (r.strategy === 'custom' && r.file)
-        link = `<a class="open-link" href="/lb/code/${r.id}?token=${encodeURIComponent(getToken())}" target="_blank">代码</a>`;
+        link = `<a class="open-link" href="/lb/view/${r.id}?token=${encodeURIComponent(getToken())}" target="_blank">详情</a>`
+          + ` <a class="open-link" href="javascript:void(0)" onclick="showCode('${r.id}')">代码</a>`;
       return `
       <tr>
         <td class="${r.rank <= 3 ? 'rank-top' : 'rank-num'}">${r.rank}</td>

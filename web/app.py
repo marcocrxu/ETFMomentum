@@ -63,14 +63,50 @@ def lb_code_view(item_id):
     from web.leaderboard import custom_code, check_token
     if not item_id.isalnum() or len(item_id) > 16:
         abort(404)
-    tok = request.args.get("token", "")
-    ok, _ = check_token(tok)
+    ok, _ = check_token(request.args.get("token", ""))
     if not ok:
         abort(404)                      # 错误 token 一律 404, 不暴露页面存在
     code = custom_code(item_id)
     if code is None:
         abort(404)
     return "<pre style='padding:20px;line-height:1.5'>%s</pre>" % code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+@app.route("/lb/view/<item_id>")
+def lb_view_page(item_id):
+    from web.leaderboard import custom_result, check_token
+    if not item_id.isalnum() or len(item_id) > 16:
+        abort(404)
+    ok, _ = check_token(request.args.get("token", ""))
+    if not ok:
+        abort(404)
+    if custom_result(item_id) is None:
+        abort(404)
+    return render_template("lb_view.html", item_id=item_id,
+                           token=request.args.get("token", ""))
+
+@app.route("/api/leaderboard/custom/result", methods=["POST"])
+def api_leaderboard_custom_result():
+    from web.leaderboard import custom_result, check_token
+    params = request.get_json(silent=True) or {}
+    ok, _ = check_token(params.get("token", ""))
+    if not ok:
+        return jsonify({"success": False, "error": "token 错误"}), 403
+    r = custom_result(params.get("id", ""))
+    if r is None:
+        return jsonify({"success": False, "error": "记录不存在"}), 404
+    return jsonify({"success": True, "data": r})
+
+@app.route("/api/leaderboard/custom/code", methods=["POST"])
+def api_leaderboard_custom_code():
+    from web.leaderboard import custom_code, check_token
+    params = request.get_json(silent=True) or {}
+    ok, _ = check_token(params.get("token", ""))
+    if not ok:
+        return jsonify({"success": False, "error": "token 错误"}), 403
+    code = custom_code(params.get("id", ""))
+    if code is None:
+        return jsonify({"success": False, "error": "代码不存在"}), 404
+    return jsonify({"success": True, "data": {"id": params.get("id"), "code": code}})
 
 @app.route("/api/leaderboard/last")
 def api_leaderboard_last():

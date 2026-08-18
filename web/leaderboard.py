@@ -93,6 +93,9 @@ def _row(strategy, label, m, extra=None):
          "neg_years": m.get("neg_years")}
     if extra:
         r.update(extra)
+    for k in ("nav_log", "dates", "decisions", "yearly"):
+        if m.get(k) is not None:
+            r[k] = m[k]
     return r
 
 
@@ -302,15 +305,18 @@ def _generate(item):
     os.makedirs(CUSTOM_DIR, exist_ok=True)
     prompt = f"""你是量化策略实现助手。请把下面的策略描述实现成一个单一 Python 文件: {code_path}
 文件契约 (必须严格遵守):
-1. 文件必须定义函数 run(params: dict) -> dict, 返回字典至少含键:
-   total_ret(累计收益%%), max_dd(最大回撤%%), ann_ret(年化%%), calmar, sharpe, trade_count
-   (trade_count 为交易次数, 数值可为 None)
+1. 文件必须定义函数 run(params: dict) -> dict, 返回字典必须含以下键:
+   - nav_log: 净值序列 list[float], 逐交易日, 起点 1.0 (空仓日净值不变, 已扣手续费)
+   - dates: 与 nav_log 等长的日期字符串 list[str], 格式 "YYYY-MM-DD"
+   - decisions: 交易决策 list[dict], 每项至少含 date(YYYY-MM-DD), action(如 买入XX/卖出XX/XX→YY), reason(原因)
+   - total_ret / max_dd / ann_ret / calmar / sharpe / trade_count 也可返回, 但服务端会按 nav_log 重算,
+     务必保证 nav_log 长度与 dates 一致且逐日对齐
 2. 数据来源必须用 (from data.feed import TushareFeed):
    token 从 web.config_local import TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum",
    用 get_dataframe 拉取已复权 close 日线。可用 web.bt_runner.ALL_CODES 查代码表。
 3. 回测窗口固定 2016-01-01 ~ 2026-07-31 (params 会传入 start_date/end_date, 以 params 为准)。
 4. 全部逻辑都在这一个文件里, 自包含、可 import、无交互、不要启动任何 web 服务、不修改任何其他文件。
-5. 实现后自己执行一次 run({{}}) 验证不抛异常并打印一行 JSON 结果到 stdout。
+5. 实现后自己执行一次 run({{}}) 验证不抛异常; 结果中 nav_log 与 dates 必须等长。
 策略描述:
 {desc}
 """
@@ -339,7 +345,8 @@ def _execute(item):
         "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
         "params = {'start_date': %r, 'end_date': %r}\n"
         "res = m.run(params)\n"
-        "out = {k: res.get(k) for k in ('total_ret','max_dd','mdd','ann_ret','calmar','sharpe','trade_count')}\n"
+        "out = {k: res.get(k) for k in ('total_ret','max_dd','mdd','ann_ret','calmar','sharpe','trade_count',\n"
+        "                               'nav_log','dates','decisions')}\n"
         "print(json.dumps(out, default=str))\n"
     ) % (item["id"], code_path, LB_START, LB_END)
     try:
@@ -353,8 +360,20 @@ def _execute(item):
         m = json.loads(r.stdout.strip().splitlines()[-1])
     except Exception:
         raise RuntimeError("回测结果解析失败: %s" % r.stdout[-200:])
+    nav_log = m.get("nav_log") or []
+    dates = m.get("dates") or []
+    decisions = m.get("decisions") or []
+    if not nav_log or len(nav_log) < 30:
+        raise RuntimeError("生成代码未返回有效 nav_log (契约要求逐日净值序列)")
+    if len(dates) != len(nav_log):
+        dates = [None] * len(nav_log)
+    mm = _recompute_metrics(nav_log, dates, decisions)
+    mm["nav_log"] = [round(float(v), 4) for v in nav_log]
+    mm["dates"] = [str(d)[:10] for d in dates]
+    mm["decisions"] = decisions
+    mm["trade_count"] = len(decisions) if decisions else None
     return _row("custom", item["description"][:60],
-                m, extra={"id": item["id"], "file": "lb_custom/%s.py" % item["id"]})
+                mm, extra={"id": item["id"], "file": "lb_custom/%s.py" % item["id"]})
 
 
 def _process(item):
@@ -368,6 +387,37 @@ def _process(item):
         _update_item(item["id"], {"status": "failed", "error": str(e)[:300]})
 
 
+def _recompute_metrics(nav_log, dates=None, decisions=None):
+    """按 nav_log 重算指标 (服务端统一口径); 缺失时返回 None 值"""
+    nav = np.array([float(v) for v in nav_log if v is not None], dtype=float)
+    if len(nav) == 0:
+        return {"total_ret": None, "mdd": None, "ann_ret": None,
+                "calmar": None, "sharpe": None}
+    cm = np.maximum.accumulate(nav)
+    mdd = float(np.min((nav - cm) / cm * 100))
+    years = max(len(nav) / 252, 0.01)
+    ann = (nav[-1] ** (1 / years) - 1) * 100 if nav[-1] > 0 else -100.0
+    dr = np.diff(nav) / nav[:-1]
+    dr = dr[~np.isnan(dr)]
+    sharpe = round(float(np.mean(dr) / np.std(dr) * np.sqrt(252)), 2) \
+        if len(dr) > 10 and np.std(dr) > 1e-9 else 0.0
+    yearly = {}
+    if dates is not None and len(dates) == len(nav):
+        by = {}
+        for i, d in enumerate(dates):
+            y = str(d)[:4]
+            by[y] = nav[i]
+        prev = 1.0
+        for y in sorted(by):
+            yearly[y] = round((by[y] / prev - 1) * 100, 2)
+            prev = by[y]
+    return {"total_ret": round(float((nav[-1] - 1) * 100), 1),
+            "mdd": round(mdd, 2), "ann_ret": round(float(ann), 2),
+            "calmar": round(ann / abs(mdd), 2) if mdd else 0.0,
+            "sharpe": sharpe, "yearly": yearly,
+            "trade_count": len(decisions) if decisions else None}
+
+
 def custom_status():
     return _load_queue()
 
@@ -378,3 +428,11 @@ def custom_code(item_id):
         return None
     with open(p) as f:
         return f.read()
+
+
+def custom_result(item_id):
+    """从队列里取完整结果 (含 nav_log/dates/decisions), 供详情页渲染"""
+    for it in _load_queue():
+        if it["id"] == item_id and it.get("result"):
+            return it["result"]
+    return None
