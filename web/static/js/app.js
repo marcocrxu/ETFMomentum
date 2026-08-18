@@ -110,6 +110,7 @@ function collectParams() {
     defensive_on: document.getElementById('defensive_on').checked,
     risk_adj_on: document.getElementById('risk_adj_on').checked,
     accel_cooldown: +document.getElementById('accel_cooldown').value || 0,
+    accel_cooldown_gold_only: document.getElementById('accel_cooldown_gold_only').checked,
     stop_cooldown: +document.getElementById('stop_cooldown').value || 0,
     sh_cash_cooldown: +document.getElementById('sh_cash_cooldown').value || 0,
     multi_mom_on: document.getElementById('multi_mom_on').checked,
@@ -362,6 +363,7 @@ function applyConfig(cfg) {
   setChecked('multi_mom_on', cfg.multi_mom_on);
   setChecked('fip_on', cfg.fip_on);
   setVal('accel_cooldown', cfg.accel_cooldown);
+  setChecked('accel_cooldown_gold_only', cfg.accel_cooldown_gold_only);
   setVal('stop_cooldown', cfg.stop_cooldown);
   setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
   setVal('top_k', cfg.top_k);

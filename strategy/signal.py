@@ -48,6 +48,7 @@ class SignalConfig:
     defensive_enabled: bool = False  # 防御切换: 空仓信号触发时改持防御资产(动量最强且为正)
     risk_adj_mom: bool = False     # 风险调整动量: 排名用 动量/20日波动率 (阈值仍用原始动量)
     accel_cooldown: int = 0        # 加速止盈后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免)
+    accel_cooldown_gold_only: bool = False  # 止盈冷却仅对黄金生效 (创业的止盈后买回历史上是正收益, 不应误伤)
     accel_reentry_gate: bool = False  # 止盈再入场闸门: 加速止盈后须 mom10 回落到自身止盈阈值下方才允许买回 (0=关闭; 2026-08-18 研究, 打断黄金blow-off循环)
     stop_cooldown: int = 0         # 止损/绝对止损后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免; 按标的独立计时)
     sh_cash_cooldown: int = 3      # 上证空仓后再入场冷却天数 (0=关闭, 恐慌抄底豁免; 2026-08 起默认3天)
@@ -959,7 +960,8 @@ def compute_signals(
             elif cfg.cash_park_code: nav *= (1 - cost) # 空仓停泊: 卖出停泊标的计费
             if np_pos >= 0: nav *= (1 - cost); hs = t; hn = nav
             old_pos = pos; pos = np_pos
-            if accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0:
+            if (accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0
+                    and (not cfg.accel_cooldown_gold_only or etf_names[old_pos] == "黄金")):
                 accel_block_idx = old_pos
                 accel_block_until = t + cfg.accel_cooldown
             if accel_exit and old_pos >= 0 and cfg.accel_reentry_gate:
