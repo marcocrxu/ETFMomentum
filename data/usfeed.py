@@ -61,3 +61,26 @@ def align_to_cn(cn_dates, df=None):
         if pos >= 0:
             out[i] = s.iloc[pos]
     return out
+
+
+def align_fear_to_cn(cn_dates, kind):
+    """恐慌指标对齐到 CN 交易日 (无前视: CN日D 用美国日期≤D-1 的收盘)
+    kind: 'vix' (data/vix.csv) 或 'skew' (data/fear_indices.csv 的 ^SKEW 列)"""
+    if kind == "vix":
+        df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vix.csv"),
+                         parse_dates=["date"])
+        col = "vix"
+    else:
+        df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fear_indices.csv"),
+                         parse_dates=["date"])
+        col = "^SKEW"
+    df = df[df[col].notna()].sort_values("date")
+    s = df.set_index("date")[col]
+    idx = pd.DatetimeIndex(s.index)
+    out = np.full(len(cn_dates), np.nan)
+    for i, d in enumerate(cn_dates):
+        dt = pd.Timestamp(d) - pd.Timedelta(days=1)
+        p = idx.searchsorted(dt, side="right") - 1
+        if p >= 0:
+            out[i] = s.iloc[p]
+    return out

@@ -30,6 +30,7 @@ class SignalConfig:
     fast_full_gap: float = 5.0      # 分档切换全切档位 (仅 fast_lane_staged=True 时生效)
     vix_gate: float = 0.0            # VIX恐慌门: VIX>此值时禁止新买/切换纳指 (0=关闭; 美股侧恐慌保护, 2026-08-18 研究)
     vix_spike_exit: float = 0.0      # VIX异动离场: VIX单日涨幅>=此%时, 持纳指立即离场 (0=关闭)
+    skew_gate: float = 0.0           # SKEW尾部风险门: SKEW>此值时禁止新买/切换纳指 (0=关闭; I-7: 150 三窗口正)
     fast_lane_ma: int = 0            # 快速通道追涨闸门: 挑战者现价须高于自身MA(N)才走快速通道 (0=关闭; 2026-08-17 消融为负优化默认关: 被拦切换恰是历史最优档83%胜率/均盈+4.5%; 被拦时落回慢通道=min_hold后正常切换)
     commission: float = 0.0001     # 手续费率(单边)
     slippage: float = 0.0          # 滑点/冲击成本(单边)
@@ -496,10 +497,17 @@ def compute_signals(
                 ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
             ma_mat = ma_full
 
-    # ── VIX 恐慌序列 (pre_mats["vix"] 传入, 已按决策区对齐且无前视) ──
+    # ── VIX/SKEW 恐慌序列 (pre_mats 传入, 已按决策区对齐且无前视) ──
     vix_arr = (pre_mats or {}).get("vix")
     if vix_arr is not None:
         vix_arr = np.asarray(vix_arr, dtype=float)
+    skew_arr = (pre_mats or {}).get("skew")
+    if skew_arr is not None:
+        skew_arr = np.asarray(skew_arr, dtype=float)
+
+    def _panic_block(i, t, arr, gate):
+        """恐慌门: 序列值>gate 时禁止买/切该标的"""
+        return bool(gate > 0 and arr is not None and not np.isnan(arr[t]) and arr[t] > gate)
 
     # ── 快速通道追涨闸门均线 (挑战者须高于自身MA(N)才走快速通道; 优先用全量历史预计算值防冷启动,
     #    内部冷启动兜底时窗口前N-1天为NaN→闸门放行, 仅影响极短回测窗口起点) ──
@@ -864,9 +872,10 @@ def compute_signals(
                     pass  # 动量耗尽门: 候选已耗尽/减速/超买, 保持空仓等待
                 elif not trend_ok(ti, t):
                     pass  # 趋势门: 候选低于自身长均线, 保持空仓
-                elif (cfg.vix_gate > 0 and etf_names[ti] == "纳指" and vix_arr is not None
-                        and not np.isnan(vix_arr[t]) and vix_arr[t] > cfg.vix_gate):
-                    pass  # VIX恐慌门: 美股恐慌期不新买纳指
+                elif (etf_names[ti] == "纳指" and (
+                        _panic_block(ti, t, vix_arr, cfg.vix_gate)
+                        or _panic_block(ti, t, skew_arr, cfg.skew_gate))):
+                    pass  # VIX/SKEW恐慌门: 美股恐慌期不新买纳指
                 elif lm >= cfg.cash_skip_gt and not np.isnan(lm):
                     sw = True; np_pos = ti; streak = 0; reason = ">3%即买"
                 elif streak >= cfg.confirm_days:
@@ -897,9 +906,10 @@ def compute_signals(
                 pass  # 排名缓冲: 持仓仍在前N名, 不切换
             elif not trend_ok(ti, t):
                 pass  # 趋势门: 候选低于自身长均线, 不切换
-            elif (cfg.vix_gate > 0 and etf_names[ti] == "纳指" and vix_arr is not None
-                    and not np.isnan(vix_arr[t]) and vix_arr[t] > cfg.vix_gate):
-                pass  # VIX恐慌门: 美股恐慌期不切向纳指
+            elif (etf_names[ti] == "纳指" and (
+                    _panic_block(ti, t, vix_arr, cfg.vix_gate)
+                    or _panic_block(ti, t, skew_arr, cfg.skew_gate))):
+                pass  # VIX/SKEW恐慌门: 美股恐慌期不切向纳指
             elif fast_gap and met and hd >= cfg.fast_min_hold:
                 if (cfg.fast_lane_staged and cfg.fast_full_gap > cfg.exception_gap
                         and gap < cfg.fast_full_gap):

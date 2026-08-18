@@ -66,6 +66,16 @@
         </div>
 
         <div class="param-group">
+          <label class="group-label" title="VIX>此值时禁止新买/切换纳指 (美股恐慌保护, 0=关闭)">VIX恐慌门</label>
+          <input id="vix_gate" type="number" value="0" min="0" step="1">
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="SKEW>此值时禁止新买/切换纳指 (尾部风险, 0=关闭, 研究建议150)">SKEW尾部风险门</label>
+          <input id="skew_gate" type="number" value="0" min="0" step="5">
+        </div>
+
+        <div class="param-group">
           <label class="group-label" title="纳指动量混入 QQQ×USDCNY 人民币口径动量: (1-w)×513100 + w×QQQ-CNY; 默认关=基线 (I组补遗5, w∈[0.6,0.75] 通过OOS)">纳指动量混合QQQ</label>
           <div class="toggle-row">
             <label class="toggle">

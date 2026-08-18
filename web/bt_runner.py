@@ -107,6 +107,9 @@ def run_backtest(params):
         fast_lane_staged=bool(params.get("fast_lane_staged", False)),
         fast_full_gap=float(params.get("fast_full_gap", 5.0)),
         fast_lane_ma=int(params.get("fast_lane_ma", 0)),
+        vix_gate=float(params.get("vix_gate", 0.0)),
+        vix_spike_exit=float(params.get("vix_spike_exit", 0.0)),
+        skew_gate=float(params.get("skew_gate", 0.0)),
     )
 
     # 数据: 起始日往前拉预热天数
@@ -246,6 +249,12 @@ def run_backtest(params):
         pre_mats["ma_fast"] = _maf_full[:, _pre_days:]
     if bond_full is not None:
         pre_mats["park"] = bond_full[_pre_days:]
+    if cfg.vix_gate > 0 or cfg.vix_spike_exit > 0:
+        from data.usfeed import align_fear_to_cn
+        pre_mats["vix"] = align_fear_to_cn(_all_full, "vix")[_pre_days:]
+    if cfg.skew_gate > 0:
+        from data.usfeed import align_fear_to_cn
+        pre_mats["skew"] = align_fear_to_cn(_all_full, "skew")[_pre_days:]
     if cfg.fip_tiebreak:
         pre_mats["up_ratio"] = calc_up_ratio20(price_mat)[:, _pre_days:]
     # cyb_p/sh_price 传完整历史序列(含预热), signal 内部用 pre_days 偏移访问,
