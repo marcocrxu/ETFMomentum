@@ -184,7 +184,8 @@ class TestNzMomQqqBlend:
         from web.bt_runner import run_backtest
         r = run_backtest({"universe": "纳指,黄金,创业",
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
-                          "nz_mom_qqq_on": False})
+                          "nz_mom_qqq_on": False, "accel_cooldown": 0,
+                          "accel_cooldown_gold_only": False})
         assert abs(r["total_ret"] - 3595.1) < 0.5, "on=False 应回到纯ETF基线 3595.1"
 
     def test_on_w1_differs_and_checks_ok(self):
@@ -192,7 +193,8 @@ class TestNzMomQqqBlend:
         from web.bt_runner import run_backtest
         r = run_backtest({"universe": "纳指,黄金,创业",
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
-                          "nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0})
+                          "nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0,
+                          "accel_cooldown": 0, "accel_cooldown_gold_only": False})
         assert abs(r["total_ret"] - 3374.6) < 0.5, "w=1.0 应与 I-2 纯QQQ口径一致"
         assert "error" not in r, r.get("error")
         assert r["checks"] == ["OK"], r["checks"]
