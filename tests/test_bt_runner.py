@@ -198,3 +198,25 @@ class TestNzMomQqqBlend:
         r1 = run_backtest(base)
         r2 = run_backtest(dict(base, nz_mom_qqq_w=0.7))
         assert r1["total_ret"] == r2["total_ret"]
+
+
+class TestYanyanRunner:
+    """yanyan 策略回测编排 (需真实缓存)"""
+
+    def test_subset_universe(self):
+        _skip_if_no_data()
+        from web.yanyan_runner import run_yanyan
+        r = run_yanyan({"start_date": "2024-01-01", "end_date": "2026-08-12",
+                        "universe": "纳指,黄金,港股创新药"})
+        assert "error" not in r, r.get("error")
+        assert r["checks"] == ["OK"], r["checks"]
+        assert r["actual_universe"] == ["纳指", "港股创新药", "黄金"], r["actual_universe"]
+        assert len(r["position_labels"]) == 4, r["position_labels"]
+
+    def test_invalid_universe_falls_back_or_errors(self):
+        _skip_if_no_data()
+        from web.yanyan_runner import run_yanyan
+        r = run_yanyan({"start_date": "2024-01-01", "end_date": "2026-08-12",
+                        "universe": "不存在的标的"})
+        assert "error" in r or r.get("actual_universe"), \
+            "无效 universe 应回退全池或报错"

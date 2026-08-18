@@ -3,8 +3,38 @@
 let navChart = null, ddChart = null, yearlyChart = null, posChart = null;
 let currentController = null;
 
+// 标的池: name -> {code, group} (货币为固定空仓停靠, 不参与排名, 不出现在选择里)
+const YANYAN_POOL = [
+  { name: '沪深300', code: '510300.SH', group: 'A股' },
+  { name: '中证500', code: '510500.SH', group: 'A股' },
+  { name: '创业板', code: '159915.SZ', group: 'A股' },
+  { name: '科创50', code: '588080.SH', group: 'A股' },
+  { name: '有色', code: '512400.SH', group: 'A股' },
+  { name: '红利低波', code: '512890.SH', group: 'A股' },
+  { name: '中证2000', code: '563300.SH', group: 'A股' },
+  { name: '纳指', code: '513100.SH', group: '跨境' },
+  { name: '港股创新药', code: '513120.SH', group: '跨境' },
+  { name: '黄金', code: '518880.SH', group: '黄金' },
+];
+const DEFAULT_SELECTED = YANYAN_POOL.map(e => e.name);
+
+function buildChips() {
+  const container = document.getElementById('yanyan-chips');
+  container.innerHTML = YANYAN_POOL.map(etf => `
+    <label class="etf-chip">
+      <input type="checkbox" class="yanyan-cb" value="${etf.name}" ${DEFAULT_SELECTED.includes(etf.name) ? 'checked' : ''}>
+      <span class="chip-label">${etf.name}<span class="code">${etf.code}·${etf.group}</span></span>
+    </label>
+  `).join('');
+}
+
+function collectUniverse() {
+  return Array.from(document.querySelectorAll('.yanyan-cb:checked')).map(cb => cb.value);
+}
+
 function collectParams() {
   return {
+    universe: collectUniverse().join(','),
     regime_ma: +document.getElementById('regime_ma').value || 200,
     switch_buffer: +document.getElementById('switch_buffer').value || 2.0,
     overheat_mom: +document.getElementById('overheat_mom').value || 40,
@@ -38,6 +68,10 @@ function setLoading(show) {
 async function runYanyan() {
   hideError();
   const params = collectParams();
+  if (params.universe.split(',').filter(Boolean).length < 2) {
+    showError('至少勾选 2 个排名标的');
+    return;
+  }
   if (!params.start_date || !params.end_date || params.start_date >= params.end_date) {
     showError('请设置正确的起止日期');
     return;
@@ -143,5 +177,6 @@ function renderTrades(data) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  buildChips();
   document.getElementById('btn-run').addEventListener('click', runYanyan);
 });

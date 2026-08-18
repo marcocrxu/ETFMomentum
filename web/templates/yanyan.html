@@ -22,6 +22,13 @@
     <section class="card params-card">
       <div class="card-header"><h2>⚙️ 策略参数</h2></div>
       <div class="param-grid">
+        <div class="param-group" style="grid-column: 1 / -1;">
+          <label class="group-label">标的池 (点击勾选, 货币为固定空仓停靠不参与排名; 沪深300 兼作牛熊指标)</label>
+          <div class="etf-chips" id="yanyan-chips">
+            <!-- chips injected by JS -->
+          </div>
+        </div>
+
         <div class="param-group">
           <label class="group-label" title="沪深300 现价低于 MA(N) 判定熊市, A股池禁止持仓, 只允许跨境+黄金">牛熊均线周期</label>
           <input id="regime_ma" type="number" value="200" min="20">

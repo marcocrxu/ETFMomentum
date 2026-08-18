@@ -71,15 +71,30 @@ def run_yanyan(params):
     price_mat = np.array([_bp(c) for c in codes])
     hs300_p = price_mat[names.index("沪深300")]
 
+    # ── 标的池可选: universe=逗号分隔名称 (默认全部10只排名标的; 货币为固定空仓停靠, 不入选择) ──
+    rank_names_all = [n for n, g in zip(names, groups) if g != "C"]
+    _uni_raw = [x.strip() for x in str(params.get("universe", "")).split(",") if x.strip()]
+    sel_names = [n for n in _uni_raw if n in rank_names_all]
+    if len(sel_names) == 0:
+        sel_names = rank_names_all              # 未传/全无效 → 默认全池
+    sel_names = sorted(set(sel_names), key=rank_names_all.index)
+    if len(sel_names) < 2:
+        return {"error": "至少选择 2 个排名标的"}
+    cash_i_full = names.index("货币")
+    sel_idx = [names.index(n) for n in sel_names]
+    _price_sel = price_mat[sel_idx + [cash_i_full]]
+    _names_sel = sel_names + ["货币"]
+    _groups_sel = [groups[names.index(n)] for n in sel_names] + ["C"]
+
     # MA200 在全量历史预计算 (防窗口起点冷启动)
     ma200_hs = pd.Series(hs300_p).rolling(cfg.regime_ma).mean().values
 
     # 决策区切片
-    _p_user = price_mat[:, _pre_days:]
+    _p_user = _price_sel[:, _pre_days:]
     ma200_user = ma200_hs[_pre_days:]
 
     actions, final_nav, nav_log = compute_yanyan(
-        cfg, names, groups, _p_user, hs300_p[_pre_days:],
+        cfg, _names_sel, _groups_sel, _p_user, hs300_p[_pre_days:],
         n, ma200_hs=ma200_user)
 
     _vs_user = n - len(nav_log)
@@ -103,8 +118,8 @@ def run_yanyan(params):
         if old_p >= 0 and new_p >= 0:
             pnl = (nav_now / _entry_nav - 1) * 100 if _entry_nav > 0 else 0
             decisions.append({"date": str(_all_full[full_day])[:10],
-                              "action": f"{names[old_p]}→{names[new_p]}",
-                              "price": _safe_price(price_mat[old_p, full_day]),
+                              "action": f"{_names_sel[old_p]}→{_names_sel[new_p]}",
+                              "price": _safe_price(_price_sel[old_p, full_day]),
                               "pnl": round(pnl, 2), "nav": round(nav_now, 4),
                               "days": full_day - _entry_full_day, "reason": reason})
             _entry_nav = nav_now
@@ -112,16 +127,16 @@ def run_yanyan(params):
         elif old_p >= 0:
             pnl = (nav_now / _entry_nav - 1) * 100 if _entry_nav > 0 else 0
             decisions.append({"date": str(_all_full[full_day])[:10],
-                              "action": f"卖出{names[old_p]}",
-                              "price": _safe_price(price_mat[old_p, full_day]),
+                              "action": f"卖出{_names_sel[old_p]}",
+                              "price": _safe_price(_price_sel[old_p, full_day]),
                               "pnl": round(pnl, 2), "nav": round(nav_now, 4),
                               "days": full_day - _entry_full_day, "reason": reason})
         elif new_p >= 0:
             _entry_nav = nav_now
             _entry_full_day = full_day
             decisions.append({"date": str(_all_full[full_day])[:10],
-                              "action": f"买入{names[new_p]}",
-                              "price": _safe_price(price_mat[new_p, full_day]),
+                              "action": f"买入{_names_sel[new_p]}",
+                              "price": _safe_price(_price_sel[new_p, full_day]),
                               "pnl": None, "nav": round(nav_now, 4),
                               "days": None, "reason": reason})
     _final_pos = -1
@@ -131,13 +146,13 @@ def run_yanyan(params):
         fd = n_full - 1
         pnl = (user_nav[-1] / _entry_nav - 1) * 100 if _entry_nav > 0 else 0
         decisions.append({"date": str(_all_full[fd])[:10],
-                          "action": f"持有{names[_final_pos]}",
-                          "price": _safe_price(price_mat[_final_pos, fd]),
+                          "action": f"持有{_names_sel[_final_pos]}",
+                          "price": _safe_price(_price_sel[_final_pos, fd]),
                           "pnl": round(pnl, 2), "nav": round(user_nav[-1], 4),
                           "days": fd - _entry_full_day, "reason": "期末"})
 
     # ── 持仓热力图序列 ──
-    position_labels = ["空仓"] + names
+    position_labels = ["空仓"] + sel_names
     position_series = [-1] * n
     current_pos = -1
     act_idx = 0
@@ -150,7 +165,7 @@ def run_yanyan(params):
         position_series[t] = current_pos
 
     # ── 等权买入持有基准 (10 只排名池, 不含货币) ──
-    rank_idx = [i for i, g in enumerate(groups) if g != "C"]
+    rank_idx = list(range(len(sel_names)))
     benchmark = [1.0] * n
     for t in range(1, n):
         prev = _p_user[rank_idx, t - 1]
@@ -164,7 +179,7 @@ def run_yanyan(params):
 
     # ── 各标的归一化净值 ──
     etf_navs = {}
-    for idx, nm in enumerate(names):
+    for idx, nm in enumerate(sel_names):
         s = _p_user[idx]
         fv = np.where(~np.isnan(s) & (s > 0))[0]
         if len(fv) > 0:
@@ -239,7 +254,7 @@ def run_yanyan(params):
         "neg_years": sum(1 for v in yearly.values() if v < 0),
         "decisions": decisions, "nav_log": user_nav,
         "last_position": last_pos, "trade_count": len(decisions),
-        "actual_universe": names,
+        "actual_universe": sel_names,
         "data_range": f"{str(all_dates[0])[:10]} ~ {str(all_dates[-1])[:10]}",
         "data_days": n_full, "server_time": _dt.datetime.now().strftime("%H:%M:%S"),
         "checks": checks,
