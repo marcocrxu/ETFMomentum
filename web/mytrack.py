@@ -258,9 +258,10 @@ def compute_track():
             t["strat_ret"] = (round((s_norm[i1] / s_norm[i0] - 1) * 100, 2)
                               if i0 is not None and i1 is not None else None)
 
-    # ── 三大指数基准(与我的净值同窗口 rebase) ──
+    # ── 四大指数基准(与我的净值同窗口 rebase) ──
     benchmarks = []
-    IDX = {"上证指数": "000001.SH", "创业板指数": "399006.SZ", "深证成指": "399001.SZ"}
+    IDX = {"上证指数": "000001.SH", "创业板指数": "399006.SZ", "深证成指": "399001.SZ",
+           "科创50": "000688.SH"}
     try:
         idx_dfs = FEED.get_dataframe(list(IDX.values()), str(dates[0]).replace("-", ""),
                                      str(dates[-1]).replace("-", ""))

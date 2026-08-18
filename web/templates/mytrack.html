@@ -172,7 +172,7 @@ function drawChart(){
       lineStyle: { color: '#64b5f6', width: 2, type: 'dashed' }, itemStyle: { color: '#64b5f6' },
       data: same ? DATA.strat.nav : alignStrat() });
   }
-  var IDX_COLORS = ['#ffb74d', '#4dd0e1', '#ba68c8'];
+  var IDX_COLORS = ['#ffb74d', '#4dd0e1', '#ba68c8', '#aed581'];
   (DATA.benchmarks || []).forEach(function(b, i){
     series.push({ name: b.name, type: 'line', showSymbol: false,
       lineStyle: { color: IDX_COLORS[i % IDX_COLORS.length], width: 1.4 },
