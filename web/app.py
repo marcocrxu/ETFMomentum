@@ -34,9 +34,43 @@ def api_yanyan_run():
 
 @app.route("/api/leaderboard/run", methods=["POST"])
 def api_leaderboard_run():
-    from web.leaderboard import run_leaderboard
+    from web.leaderboard import run_leaderboard, check_token
     params = request.get_json(silent=True) or {}
+    ok, err = check_token(params.get("token"))
+    if not ok:
+        return jsonify({"success": False, "error": err}), 403
     return jsonify({"success": True, "data": run_leaderboard(params)})
+
+@app.route("/api/leaderboard/custom", methods=["POST"])
+def api_leaderboard_custom():
+    from web.leaderboard import submit_custom, check_token
+    params = request.get_json(silent=True) or {}
+    ok, err = check_token(params.get("token"))
+    if not ok:
+        return jsonify({"success": False, "error": err}), 403
+    item, err = submit_custom(params.get("description"))
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    return jsonify({"success": True, "data": item})
+
+@app.route("/api/leaderboard/custom/status")
+def api_leaderboard_custom_status():
+    from web.leaderboard import custom_status
+    return jsonify({"success": True, "data": custom_status()})
+
+@app.route("/lb/code/<item_id>")
+def lb_code_view(item_id):
+    from web.leaderboard import custom_code, check_token
+    if not item_id.isalnum() or len(item_id) > 16:
+        abort(404)
+    tok = request.args.get("token", "")
+    ok, _ = check_token(tok)
+    if not ok:
+        abort(404)                      # 错误 token 一律 404, 不暴露页面存在
+    code = custom_code(item_id)
+    if code is None:
+        abort(404)
+    return "<pre style='padding:20px;line-height:1.5'>%s</pre>" % code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 @app.route("/api/leaderboard/last")
 def api_leaderboard_last():

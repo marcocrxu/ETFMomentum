@@ -13,14 +13,22 @@
     .strategy-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
     .badge-etf { background: rgba(233,69,96,.15); color: #e94560; }
     .badge-yanyan { background: rgba(76,175,80,.15); color: #4caf50; }
+    .badge-custom { background: rgba(33,150,243,.15); color: #2196f3; }
     .lb-meta { color: #8b92a8; font-size: 13px; margin-top: 6px; }
+    .nl-card textarea { width: 100%; min-height: 84px; background: #1a2030; color: #e8eaf0;
+      border: 1px solid #2a3142; border-radius: 6px; padding: 10px; font-size: 14px; resize: vertical; }
+    .nl-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .queue-item { padding: 8px 4px; border-bottom: 1px solid #2a3142; font-size: 13px; }
+    .status-pending { color: #ffb74d; } .status-running { color: #ffd740; }
+    .status-done { color: #4caf50; } .status-failed { color: #f44336; }
+    a.open-link { color: #4fc3f7; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="page-wrapper">
     <header class="page-header">
       <h1>🏆 参数组合打榜</h1>
-      <p class="subtitle">主引擎 + yanyan 策略参数网格批量回测排行 · 支持按策略过滤</p>
+      <p class="subtitle">主引擎 + yanyan 参数网格批量回测排行 · 自然语言自定义策略打榜 · 固定窗口 2016-01-01 ~ 2026-07-31</p>
     </header>
 
     <nav class="page-nav">
@@ -36,7 +44,7 @@
         <div class="param-group">
           <label class="group-label">策略过滤</label>
           <select id="lb-strategy">
-            <option value="all" selected>全部 (主引擎 + yanyan)</option>
+            <option value="all" selected>全部 (主引擎 + yanyan + 自定义)</option>
             <option value="yanyan">仅 yanyan</option>
             <option value="etf">仅主引擎 ETF</option>
           </select>
@@ -60,12 +68,8 @@
           </select>
         </div>
         <div class="param-group">
-          <label class="group-label">起始日期</label>
-          <input id="start_date" type="date" value="2016-07-07">
-        </div>
-        <div class="param-group">
-          <label class="group-label">结束日期</label>
-          <input id="end_date" type="date" value="2026-08-12">
+          <label class="group-label">提交 token</label>
+          <input id="lb-token" type="password" placeholder="必填, 防外部刷榜" style="width:180px">
         </div>
         <div class="param-actions" style="margin:0">
           <button type="button" class="btn btn-primary" id="btn-run">🏆 跑榜</button>
@@ -75,14 +79,26 @@
       <div class="lb-meta" id="lb-meta" style="display:none"></div>
     </section>
 
+    <section class="card params-card nl-card">
+      <div class="card-header"><h2>🤖 自然语言自定义策略打榜</h2>
+        <span class="lb-meta" style="margin:0">输入策略描述 → 后台 dsh 生成单文件代码并回测 → 结果并入榜单 (需 token)</span>
+      </div>
+      <textarea id="nl-desc" placeholder="例: 用 纳指/黄金/创业 三只 ETF 做 20 日动量轮动, 上证指数 20 日动量最强时空仓, 持仓亏损超 5% 止损, 动量差超 3% 立即切换..."></textarea>
+      <div class="nl-row" style="margin-top:10px">
+        <button type="button" class="btn btn-primary" id="btn-submit">🚀 提交打榜</button>
+        <div class="lb-meta" id="nl-msg" style="margin:0"></div>
+      </div>
+      <div id="queue-list" style="margin-top:10px"></div>
+    </section>
+
     <section class="card table-card" id="table-card" style="display:none">
       <div class="card-header"><h2>📋 排行榜</h2></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>#</th><th>策略</th><th>参数组合</th><th>累计收益</th><th>年化</th>
-              <th>最大回撤</th><th>Calmar</th><th>夏普</th><th>交易</th>
+              <th>#</th><th>策略</th><th>参数组合 / 描述</th><th>累计收益</th><th>年化</th>
+              <th>最大回撤</th><th>Calmar</th><th>夏普</th><th>交易</th><th></th>
             </tr>
           </thead>
           <tbody id="lb-body"></tbody>
@@ -92,7 +108,7 @@
   </div>
 
   <div class="loading-overlay" id="loading" style="display:none">
-    <div class="loading-box"><div class="spinner"></div><p id="loading-text">打榜计算中 (全部组合约需 1~4 分钟)...</p></div>
+    <div class="loading-box"><div class="spinner"></div><p id="loading-text">打榜计算中 (全部组合约需 1~2 分钟)...</p></div>
   </div>
 
   <script src="{{ url_for('static', filename='js/leaderboard.js') }}"></script>

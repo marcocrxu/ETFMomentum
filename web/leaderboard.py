@@ -1,13 +1,19 @@
-"""打榜 — 按参数组合批量回测排行 (主引擎 + yanyan), 支持按策略过滤与指标排序
+"""打榜 — 参数网格批量回测排行 + 自然语言自定义策略提交 (dsh headless 生成单文件代码并回测)
 
-网格 (研究固化的敏感参数轴, 组合数有上限):
-- 主引擎 ETF: exception_gap × 空仓冷却 × 纳指QQQ混合   = 4×2×2 = 16 组合
-- yanyan:     轮动缓冲 × 过热门槛 × 过热Q × 牛熊MA     = 3×3×2×3 = 54 组合
-数据只加载一次 (yanyan 快速路径直接调引擎); 结果持久化到 web/leaderboard_last.json
+- 网格 (研究固化参数轴): 主引擎 16 组合 + yanyan 54 组合
+- 自定义: 输入自然语言 → 后台 dsh --profile headless 生成单一文件 lb_custom/<id>.py
+  (契约: run(params)->dict) → 子进程执行回测 → 结果并入榜单
+- 安全: 提交须 LEADERBOARD_TOKEN (web/config_local.py), 防外部刷 dsh/tushare token;
+  队列上限 3, 串行执行, dsh 超时 900s
+- 窗口固定: 2016-01-01 ~ 2026-07-31
 """
 import json
 import os
+import re
+import subprocess
+import threading
 import time
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -16,6 +22,15 @@ from strategy.yanyan import YanyanConfig, UNIVERSE, compute_yanyan
 from web.bt_runner import run_backtest, FEED
 
 LAST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "leaderboard_last.json")
+QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lb_queue.json")
+CUSTOM_DIR = "/root/etf_strategy/lb_custom"
+REPO_DIR = "/root/etf_strategy"
+
+# 固定打榜窗口 (用户要求)
+LB_START = "2016-01-01"
+LB_END = "2026-07-31"
+
+METRICS = ("calmar", "total_ret", "ann_ret", "sharpe", "mdd")
 
 # ── 主引擎打榜网格 ──
 ETF_GRID = []
@@ -47,7 +62,26 @@ YANYAN_UNIVERSES = {
     "跨境黄金3只": "纳指,港股创新药,黄金",
 }
 
-METRICS = ("calmar", "total_ret", "ann_ret", "sharpe", "mdd")
+_queue_lock = threading.Lock()
+_worker_alive = False
+
+
+# ── 密钥 ──
+def get_leaderboard_token():
+    try:
+        from web.config_local import LEADERBOARD_TOKEN
+        return LEADERBOARD_TOKEN
+    except ImportError:
+        return ""
+
+
+def check_token(tok):
+    want = get_leaderboard_token()
+    if not want:
+        return False, "服务器未配置 LEADERBOARD_TOKEN (web/config_local.py)"
+    if tok != want:
+        return False, "token 错误"
+    return True, ""
 
 
 def _row(strategy, label, m, extra=None):
@@ -82,11 +116,9 @@ def _metrics_from_log(nav_log, actions=None):
 
 
 def _run_yanyan_grid(start, end, universe=""):
-    """数据只加载一次, 直接调引擎跑全部 yanyan 组合"""
     names = [u[0] for u in UNIVERSE]
     groups = [u[2] for u in UNIVERSE]
     codes = [u[1] for u in UNIVERSE]
-
     dfs = FEED.get_dataframe(codes, "20150301", end.replace("-", ""))
     _all = sorted(set().union(*[set(df["trade_date"]) for df in dfs.values()]))
     _all = [d for d in _all if pd.Timestamp("20150301") <= d <= pd.Timestamp(end)]
@@ -99,7 +131,6 @@ def _run_yanyan_grid(start, end, universe=""):
     pm = np.array([bp(c) for c in codes])
     hs = pm[names.index("沪深300")]
 
-    # universe 子集
     rank_all = [i for i, g in enumerate(groups) if g != "C"]
     uni_raw = [x.strip() for x in (universe or "").split(",") if x.strip()]
     sel = [names.index(n) for n in uni_raw if n in names and names.index(n) in rank_all]
@@ -121,8 +152,7 @@ def _run_yanyan_grid(start, end, universe=""):
         cfg = YanyanConfig(**p)
         actions, nav, log = compute_yanyan(cfg, names_sub, groups_sub, pm_sub, hs_sub,
                                            pm_sub.shape[1])
-        m = _metrics_from_log(log, actions)
-        rows.append(_row("yanyan", label, m))
+        rows.append(_row("yanyan", label, _metrics_from_log(log, actions)))
     return rows
 
 
@@ -131,9 +161,8 @@ def run_leaderboard(params):
     metric = params.get("metric", "calmar")
     if metric not in METRICS:
         metric = "calmar"
-    start = params.get("start_date", "2016-07-07")
-    end = params.get("end_date", "2026-08-12")
     universe = params.get("universe", "")
+    start, end = LB_START, LB_END                  # 固定窗口 (用户要求)
 
     t0 = time.time()
     rows = []
@@ -159,7 +188,6 @@ def run_leaderboard(params):
               "elapsed": round(time.time() - t0, 1),
               "window": f"{start} ~ {end}",
               "server_time": time.strftime("%H:%M:%S")}
-    # 持久化最近一次榜单
     tmp = LAST_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
@@ -175,3 +203,174 @@ def load_last():
             return json.load(f)
     except Exception:
         return None
+
+
+# ── 自然语言自定义策略 ──
+def _load_queue():
+    if not os.path.exists(QUEUE_FILE):
+        return []
+    try:
+        with open(QUEUE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_queue(q):
+    tmp = QUEUE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(q, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, QUEUE_FILE)
+
+
+def submit_custom(description):
+    desc = (description or "").strip()
+    if len(desc) < 10:
+        return None, "策略描述太短 (至少10字)"
+    with _queue_lock:
+        q = _load_queue()
+        if sum(1 for x in q if x["status"] in ("pending", "running")) >= 3:
+            return None, "队列已满 (最多3个待处理), 稍后再试"
+        item = {"id": uuid.uuid4().hex[:8], "description": desc,
+                "status": "pending", "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "result": None, "error": None, "file": None}
+        q.append(item)
+        _save_queue(q)
+        _ensure_worker()
+        return item, None
+
+
+def _ensure_worker():
+    global _worker_alive
+    if _worker_alive:
+        return
+    _worker_alive = True
+    t = threading.Thread(target=_worker_loop, daemon=True)
+    t.start()
+
+
+def _worker_loop():
+    global _worker_alive
+    while True:
+        with _queue_lock:
+            q = _load_queue()
+            item = next((x for x in q if x["status"] == "pending"), None)
+        if item is None:
+            _worker_alive = False
+            return
+        _process(item)
+
+
+def _update_item(item_id, patch):
+    with _queue_lock:
+        q = _load_queue()
+        for x in q:
+            if x["id"] == item_id:
+                x.update(patch)
+        _save_queue(q)
+
+
+def _dshenv():
+    """从 ~/.bashrc 提取 dsh 所需密钥 (ANTHROPIC_AUTH_TOKEN 间接引用), 不写日志"""
+    keys = {}
+    try:
+        with open(os.path.expanduser("~/.bashrc")) as f:
+            for line in f:
+                m = re.match(r'export\s+(\w+)="?([^"\n]*)"?', line.strip())
+                if m:
+                    keys[m.group(1)] = m.group(2)
+    except Exception:
+        pass
+    ak = keys.get("ANTHROPIC_AUTH_TOKEN", "")
+    dk = keys.get("DEEPSEEK_API_KEY", "")
+    if dk.startswith("$"):
+        dk = keys.get(dk[1:], "")
+    env = dict(os.environ)
+    if dk:
+        env["DEEPSEEK_API_KEY"] = dk
+    if ak:
+        env["ANTHROPIC_AUTH_TOKEN"] = ak
+    return env
+
+
+def _generate(item):
+    """dsh headless 生成单文件策略代码"""
+    desc = item["description"]
+    code_path = os.path.join(CUSTOM_DIR, item["id"] + ".py")
+    os.makedirs(CUSTOM_DIR, exist_ok=True)
+    prompt = f"""你是量化策略实现助手。请把下面的策略描述实现成一个单一 Python 文件: {code_path}
+文件契约 (必须严格遵守):
+1. 文件必须定义函数 run(params: dict) -> dict, 返回字典至少含键:
+   total_ret(累计收益%%), max_dd(最大回撤%%), ann_ret(年化%%), calmar, sharpe, trade_count
+   (trade_count 为交易次数, 数值可为 None)
+2. 数据来源必须用 (from data.feed import TushareFeed):
+   token 从 web.config_local import TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum",
+   用 get_dataframe 拉取已复权 close 日线。可用 web.bt_runner.ALL_CODES 查代码表。
+3. 回测窗口固定 2016-01-01 ~ 2026-07-31 (params 会传入 start_date/end_date, 以 params 为准)。
+4. 全部逻辑都在这一个文件里, 自包含、可 import、无交互、不要启动任何 web 服务、不修改任何其他文件。
+5. 实现后自己执行一次 run({{}}) 验证不抛异常并打印一行 JSON 结果到 stdout。
+策略描述:
+{desc}
+"""
+    try:
+        r = subprocess.run(["dsh", "--profile", "headless", prompt],
+                           cwd=REPO_DIR, env=_dshenv(),
+                           capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("dsh 生成超时(900s)")
+    if r.returncode != 0:
+        raise RuntimeError("dsh 生成失败: %s" % (r.stderr or r.stdout)[-300:])
+    if not os.path.exists(code_path) or os.path.getsize(code_path) < 100:
+        raise RuntimeError("未生成有效代码文件: %s" % code_path)
+    return code_path
+
+
+def _execute(item):
+    """子进程执行生成的 run(params), 返回指标 dict"""
+    code_path = os.path.join(CUSTOM_DIR, item["id"] + ".py")
+    script = (
+        "import sys, json, importlib.util\n"
+        "sys.path.insert(0, '/root/etf_strategy')\n"
+        "spec = importlib.util.spec_from_file_location('lb_%s', %r)\n"
+        "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+        "params = {'start_date': %r, 'end_date': %r}\n"
+        "res = m.run(params)\n"
+        "out = {k: res.get(k) for k in ('total_ret','max_dd','mdd','ann_ret','calmar','sharpe','trade_count')}\n"
+        "print(json.dumps(out, default=str))\n"
+    ) % (item["id"], code_path, LB_START, LB_END)
+    try:
+        r = subprocess.run(["python3", "-c", script], cwd=REPO_DIR,
+                           capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("回测执行超时(600s)")
+    if r.returncode != 0:
+        raise RuntimeError("回测执行失败: %s" % (r.stderr or r.stdout)[-300:])
+    try:
+        m = json.loads(r.stdout.strip().splitlines()[-1])
+    except Exception:
+        raise RuntimeError("回测结果解析失败: %s" % r.stdout[-200:])
+    return _row("custom", item["description"][:60],
+                m, extra={"id": item["id"], "file": "lb_custom/%s.py" % item["id"]})
+
+
+def _process(item):
+    _update_item(item["id"], {"status": "running"})
+    try:
+        _generate(item)
+        _update_item(item["id"], {"status": "running", "file": "lb_custom/%s.py" % item["id"]})
+        row = _execute(item)
+        _update_item(item["id"], {"status": "done", "result": row})
+    except Exception as e:
+        _update_item(item["id"], {"status": "failed", "error": str(e)[:300]})
+
+
+def custom_status():
+    return _load_queue()
+
+
+def custom_code(item_id):
+    p = os.path.join(CUSTOM_DIR, item_id + ".py")
+    if not os.path.exists(p):
+        return None
+    with open(p) as f:
+        return f.read()

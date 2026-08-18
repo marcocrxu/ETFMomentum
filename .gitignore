@@ -16,3 +16,7 @@ audit/out/*.log
 
 # 打榜最近一次结果缓存
 web/leaderboard_last.json
+
+# 打榜自定义提交 (自然语言生成代码与队列)
+web/lb_queue.json
+lb_custom/
