@@ -388,20 +388,17 @@ def run_backtest(params):
     cm = np.maximum.accumulate(nav_arr)
     drawdown = list(((nav_arr - cm) / cm * 100).round(2))
 
-    # ── 月度收益 ──
-    monthly = {}
-    month_nav = {}
+    # ── 月度收益 (锚定上月月末: 跨月休市跳空(春节等)归入新月, 保证逐月复利=区间收益) ──
+    month_last = {}
     for i, d in enumerate(all_dates):
         key = f"{d.year}-{d.month:02d}"
-        if key not in month_nav:
-            month_nav[key] = [nav_arr[i] if i < len(nav_arr) else 1.0, nav_arr[i] if i < len(nav_arr) else 1.0]
-        else:
-            month_nav[key][1] = nav_arr[i] if i < len(nav_arr) else month_nav[key][1]
-    prev_month_ret = 0.0
-    for key in sorted(month_nav.keys()):
-        start_nav, end_nav = month_nav[key]
-        ret = (end_nav / start_nav - 1) * 100 if start_nav > 0 else 0.0
+        month_last[key] = nav_arr[i] if i < len(nav_arr) else 1.0
+    prev_nav = 1.0
+    monthly = {}
+    for key in sorted(month_last.keys()):
+        ret = (month_last[key] / prev_nav - 1) * 100 if prev_nav > 0 else 0.0
         monthly[key] = round(ret, 2)
+        prev_nav = month_last[key]
 
     # ── 风险指标 (基于日收益率) ──
     daily_rets = []
