@@ -76,10 +76,26 @@ def load_mats(etf_names, start=BASE_START, end=BASE_END, mom_period=20,
 def run_cfg(cfg, mats):
     """在准备好的 mats 上跑 compute_signals, 返回 actions/nav/nav_log(用户窗口对齐)"""
     pre = mats["pre_days"]
-    pre_mats = {"accel_th": calc_accel_thresholds(mats["mom10_mat"], cfg)[:, pre:]}
+    m20 = mats["mom20_mat"].copy()
+    m10 = mats["mom10_mat"].copy()
+    # 纳指 QQQ 混合 (默认开, 与 bt_runner 同口径; w=QQQ权重)
+    if getattr(cfg, "nz_mom_qqq_on", True) and "纳指" in mats["etf_names"]:
+        from data.usfeed import load_qqq_cny, align_to_cn
+        _w = min(max(float(getattr(cfg, "nz_mom_qqq_w", 0.7)), 0.0), 1.0)
+        _qq = align_to_cn(mats["all_full"], load_qqq_cny())
+        _qq = pd.Series(_qq).ffill().values
+        _nz = mats["etf_names"].index("纳指")
+
+        def momw(a, w):
+            m = np.full(len(a), np.nan)
+            m[w:] = (a[w:] / a[:-w] - 1) * 100
+            return m
+        m20[_nz] = (1 - _w) * m20[_nz] + _w * momw(_qq, 20)
+        m10[_nz] = (1 - _w) * m10[_nz] + _w * momw(_qq, 10)
+    pre_mats = {"accel_th": calc_accel_thresholds(m10, cfg)[:, pre:]}
     actions, final_nav, nav_log = compute_signals(
         cfg, mats["etf_names"], mats["price_mat"][:, pre:],
-        mats["mom20_mat"][:, pre:], mats["mom10_mat"][:, pre:],
+        m20[:, pre:], m10[:, pre:],
         mats["sh_mom"][pre:], mats["cyb_p"], mats["sh_price"],
         mats["n_full"] - pre, pre_days=pre, pre_mats=pre_mats)
     vs_user = (mats["n_full"] - pre) - len(nav_log)

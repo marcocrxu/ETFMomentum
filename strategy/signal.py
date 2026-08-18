@@ -30,6 +30,8 @@ class SignalConfig:
     fast_full_gap: float = 5.0      # 分档切换全切档位 (仅 fast_lane_staged=True 时生效)
     vix_gate: float = 0.0            # VIX恐慌门: VIX>此值时禁止新买/切换纳指 (0=关闭; 美股侧恐慌保护, 2026-08-18 研究)
     vix_spike_exit: float = 0.0      # VIX异动离场: VIX单日涨幅>=此%时, 持纳指立即离场 (0=关闭)
+    nz_mom_qqq_on: bool = True       # 纳指动量混入QQQ: (1-w)×513100 + w×QQQ-CNY (默认开, 2026-08-18 用户决议; 数据准备层消费)
+    nz_mom_qqq_w: float = 0.7        # QQQ 权重 (0.7 = 70% QQQ + 30% ETF)
     skew_gate: float = 0.0           # SKEW尾部风险门: SKEW>此值时禁止新买/切换纳指 (0=关闭; I-7: 150 三窗口正)
     fast_lane_ma: int = 0            # 快速通道追涨闸门: 挑战者现价须高于自身MA(N)才走快速通道 (0=关闭; 2026-08-17 消融为负优化默认关: 被拦切换恰是历史最优档83%胜率/均盈+4.5%; 被拦时落回慢通道=min_hold后正常切换)
     commission: float = 0.0001     # 手续费率(单边)

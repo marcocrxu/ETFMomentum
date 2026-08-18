@@ -110,6 +110,8 @@ def run_backtest(params):
         vix_gate=float(params.get("vix_gate", 0.0)),
         vix_spike_exit=float(params.get("vix_spike_exit", 0.0)),
         skew_gate=float(params.get("skew_gate", 0.0)),
+        nz_mom_qqq_on=bool(params.get("nz_mom_qqq_on", True)),
+        nz_mom_qqq_w=float(params.get("nz_mom_qqq_w", 0.7)),
     )
 
     # 数据: 起始日往前拉预热天数
@@ -209,10 +211,10 @@ def run_backtest(params):
         mom20_mat = np.array([_lag_mom(prices[nm], mom_period, _mom_lag) for nm in etf_names])
         sh_mom = _lag_mom(sh_price, mom_period, _mom_lag)
 
-    # ── 纳指动量信号源混合: (1-w)×513100 ETF动量 + w×QQQ-CNY动量 (I组审计 2026-08-17) ──
-    # 信号用混合动量, 净值/止损仍按 513100 成交价; on=False(默认) 与基线逐分一致
-    _nz_on = bool(params.get("nz_mom_qqq_on", False))
-    _nz_w = min(max(float(params.get("nz_mom_qqq_w", 0.7)), 0.0), 1.0)
+    # ── 纳指动量信号源混合: (1-w)×513100 ETF动量 + w×QQQ-CNY动量 (I组审计, 默认开 2026-08-18) ──
+    # w = QQQ 权重 (0.7 = 70% QQQ + 30% ETF); 信号用混合动量, 净值/止损仍按 513100 成交价
+    _nz_on = bool(cfg.nz_mom_qqq_on)
+    _nz_w = min(max(float(cfg.nz_mom_qqq_w), 0.0), 1.0)
     if _nz_on and _nz_w > 0 and "纳指" in etf_names:
         from data.usfeed import load_qqq_cny, align_to_cn
         _qq = align_to_cn(_all_full, load_qqq_cny())

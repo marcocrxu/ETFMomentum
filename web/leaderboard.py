@@ -40,8 +40,8 @@ for gap in (2.5, 3.0, 3.5, 4.0):
             p = {"universe": "纳指,黄金,创业",
                  "exception_gap": gap, "sh_cash_cooldown": cd}
             label = "gap=%.1f 冷却=%d QQQ=%s" % (gap, cd, "0.7" if qqq_on else "关")
+            p["nz_mom_qqq_on"] = qqq_on
             if qqq_on:
-                p["nz_mom_qqq_on"] = True
                 p["nz_mom_qqq_w"] = qqq_w
             ETF_GRID.append((label, p))
 

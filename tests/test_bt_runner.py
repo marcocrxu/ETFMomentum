@@ -166,17 +166,26 @@ class TestChecksOK:
 class TestNzMomQqqBlend:
     """I 组: 纳指动量混合 QQQ-CNY (nz_mom_qqq_w), 需真实缓存"""
 
-    def test_default_off_equals_baseline(self):
-        """默认 on=False: 即使给了 w 也逐分等于基线 (先不默认开)"""
+    def test_default_is_qqq07(self):
+        """默认 on=True, w=0.7: 默认回测与显式开启 w=0.7 逐分一致"""
         _skip_if_no_data()
         from web.bt_runner import run_backtest
         r0 = run_backtest({"universe": "纳指,黄金,创业",
                            "start_date": "2016-07-07", "end_date": "2026-08-12"})
         r1 = run_backtest({"universe": "纳指,黄金,创业",
                            "start_date": "2016-07-07", "end_date": "2026-08-12",
-                           "nz_mom_qqq_w": 0.7})
-        assert r0["total_ret"] == r1["total_ret"], "on=False 时 w 不应生效, 基线须逐分一致"
+                           "nz_mom_qqq_on": True, "nz_mom_qqq_w": 0.7})
+        assert r0["total_ret"] == r1["total_ret"], "默认应与显式开 w=0.7 一致"
         assert r0["trade_count"] == r1["trade_count"]
+
+    def test_explicit_off_restores_etf_only(self):
+        """显式 on=False 回到纯 ETF 动量"""
+        _skip_if_no_data()
+        from web.bt_runner import run_backtest
+        r = run_backtest({"universe": "纳指,黄金,创业",
+                          "start_date": "2016-07-07", "end_date": "2026-08-12",
+                          "nz_mom_qqq_on": False})
+        assert abs(r["total_ret"] - 3595.1) < 0.5, "on=False 应回到纯ETF基线 3595.1"
 
     def test_on_w1_differs_and_checks_ok(self):
         _skip_if_no_data()
@@ -184,6 +193,7 @@ class TestNzMomQqqBlend:
         r = run_backtest({"universe": "纳指,黄金,创业",
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
                           "nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0})
+        assert abs(r["total_ret"] - 3374.6) < 0.5, "w=1.0 应与 I-2 纯QQQ口径一致"
         assert "error" not in r, r.get("error")
         assert r["checks"] == ["OK"], r["checks"]
         assert r["total_ret"] > 0

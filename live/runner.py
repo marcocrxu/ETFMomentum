@@ -89,6 +89,21 @@ class LiveRunner:
         mom10_mat = np.array([momentum(price_mat[i], 10) for i in range(len(etf_names))])
         sh_mom = momentum(sh_price, 20)
 
+        # ── 纳指动量混入 QQQ-CNY (默认开; w=QQQ权重, 0.7=70%QQQ+30%ETF; 与回测同口径) ──
+        if getattr(self.cfg, "nz_mom_qqq_on", True) and "纳指" in etf_names:
+            try:
+                from data.usfeed import load_qqq_cny, align_to_cn
+                _w = min(max(float(getattr(self.cfg, "nz_mom_qqq_w", 0.7)), 0.0), 1.0)
+                _qq = align_to_cn(all_dates, load_qqq_cny())
+                _qq = pd.Series(_qq).ffill().values
+                _nz = etf_names.index("纳指")
+                _qm20 = momentum(_qq, 20, _skip)
+                _qm10 = momentum(_qq, 10)
+                mom20_mat[_nz] = (1 - _w) * mom20_mat[_nz] + _w * _qm20
+                mom10_mat[_nz] = (1 - _w) * mom10_mat[_nz] + _w * _qm10
+            except Exception as e:
+                print("QQQ混合失败(回退ETF动量): %s" % e)
+
         # 调用共享信号函数
         actions, _, _ = compute_signals(
             self.cfg, etf_names, price_mat, mom20_mat, mom10_mat,
