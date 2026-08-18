@@ -72,7 +72,7 @@ async function submitCustom() {
       msg.textContent = '提交失败: ' + (json.error || '');
       return;
     }
-    msg.textContent = '已入队 #' + json.data.id + ', dsh 生成中 (约 2~5 分钟)...';
+    msg.textContent = '已入队 #' + json.data.id + ', claude+kimi 生成中 (约 2~5 分钟)...';
     document.getElementById('nl-desc').value = '';
     refreshQueue();
   } catch (e) {

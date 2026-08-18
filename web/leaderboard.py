@@ -1,10 +1,10 @@
 """打榜 — 参数网格批量回测排行 + 自然语言自定义策略提交 (dsh headless 生成单文件代码并回测)
 
 - 网格 (研究固化参数轴): 主引擎 16 组合 + yanyan 54 组合
-- 自定义: 输入自然语言 → 后台 dsh --profile headless 生成单一文件 lb_custom/<id>.py
+- 自定义: 输入自然语言 → 后台 claude code + kimi k3 生成单一文件 lb_custom/<id>.py
   (契约: run(params)->dict) → 子进程执行回测 → 结果并入榜单
 - 安全: 提交须 LEADERBOARD_TOKEN (web/config_local.py), 防外部刷 dsh/tushare token;
-  队列上限 3, 串行执行, dsh 超时 900s
+  队列上限 3, 串行执行, 生成超时 900s
 - 窗口固定: 2016-01-01 ~ 2026-07-31
 """
 import json
@@ -270,31 +270,33 @@ def _update_item(item_id, patch):
         _save_queue(q)
 
 
-def _dshenv():
-    """从 ~/.bashrc 提取 dsh 所需密钥 (ANTHROPIC_AUTH_TOKEN 间接引用), 不写日志"""
+KIMI_ENV_FILE = os.path.expanduser("~/.claude/backups/bashrc.kimi.20260813.bak")
+
+def _agent_env():
+    """claude code + kimi k3 环境: 从 kimi 配置备份读 ANTHROPIC_* (密钥不落日志);
+    备份缺失时回退当前 ~/.bashrc"""
     keys = {}
-    try:
-        with open(os.path.expanduser("~/.bashrc")) as f:
-            for line in f:
-                m = re.match(r'export\s+(\w+)="?([^"\n]*)"?', line.strip())
-                if m:
-                    keys[m.group(1)] = m.group(2)
-    except Exception:
-        pass
-    ak = keys.get("ANTHROPIC_AUTH_TOKEN", "")
-    dk = keys.get("DEEPSEEK_API_KEY", "")
-    if dk.startswith("$"):
-        dk = keys.get(dk[1:], "")
+    for path in (KIMI_ENV_FILE, os.path.expanduser("~/.bashrc")):
+        try:
+            with open(path) as f:
+                for line in f:
+                    m = re.match(r'export\s+(\w+)="?([^"\n]*)"?', line.strip())
+                    if m and m.group(1) not in keys:
+                        keys[m.group(1)] = m.group(2)
+        except Exception:
+            pass
     env = dict(os.environ)
-    if dk:
-        env["DEEPSEEK_API_KEY"] = dk
-    if ak:
-        env["ANTHROPIC_AUTH_TOKEN"] = ak
+    for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL",
+              "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+              "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
+        if keys.get(k):
+            env[k] = keys[k]
+    env["ANTHROPIC_MODEL"] = "k3"
     return env
 
 
 def _generate(item):
-    """dsh headless 生成单文件策略代码"""
+    """claude code + kimi k3 无头生成单文件策略代码"""
     desc = item["description"]
     code_path = os.path.join(CUSTOM_DIR, item["id"] + ".py")
     os.makedirs(CUSTOM_DIR, exist_ok=True)
@@ -313,13 +315,15 @@ def _generate(item):
 {desc}
 """
     try:
-        r = subprocess.run(["dsh", "--profile", "headless", prompt],
-                           cwd=REPO_DIR, env=_dshenv(),
-                           capture_output=True, text=True, timeout=900)
+        r = subprocess.run(["claude", "-p", "--model", "k3",
+                            "--permission-mode", "acceptEdits", prompt],
+                           cwd=REPO_DIR, env=_agent_env(),
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=900)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("dsh 生成超时(900s)")
+        raise RuntimeError("claude 生成超时(900s)")
     if r.returncode != 0:
-        raise RuntimeError("dsh 生成失败: %s" % (r.stderr or r.stdout)[-300:])
+        raise RuntimeError("claude 生成失败: %s" % (r.stderr or r.stdout)[-300:])
     if not os.path.exists(code_path) or os.path.getsize(code_path) < 100:
         raise RuntimeError("未生成有效代码文件: %s" % code_path)
     return code_path
@@ -340,7 +344,7 @@ def _execute(item):
     ) % (item["id"], code_path, LB_START, LB_END)
     try:
         r = subprocess.run(["python3", "-c", script], cwd=REPO_DIR,
-                           capture_output=True, text=True, timeout=600)
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=600)
     except subprocess.TimeoutExpired:
         raise RuntimeError("回测执行超时(600s)")
     if r.returncode != 0:
