@@ -134,3 +134,28 @@ def test_overheat_exit_and_reentry_gate():
     early = [a for a in actions if a[3] == "进场" and a[2] == 0 and t_exit < a[0] < q_day]
     assert not early, f"过热闸门未拦再进场: {[(a[0], a[2], a[3]) for a in early]}"
     # 若闸门解除后该标的仍 score 第一且 MOM20>0, 应允许再进场 (不强制断言, 只验证闸门期)
+
+
+def test_use_vol_off_changes_score():
+    """use_vol=False: score=纯MOM20; 场景构造让 vol 归一翻转排名:
+    A股1 低波动中动量 (vol归一后 score 高), A股2 高波动高动量 (纯动量排名高)"""
+    names, groups = _base_universe()
+    n = 300
+    i = np.arange(n)
+    rets1 = np.full(n, 0.002) + 0.001 * np.sin(i)      # 低波动, mom20≈4%
+    rets2 = np.full(n, 0.004) + 0.004 * np.sin(i)      # 高波动, mom20≈8%
+    noise = 0.0002 * np.sin(i)                            # 微量噪声防 vol≈0 除零爆炸
+    pm = np.array([100 * np.exp(np.cumsum(rets1)),
+                   100 * np.exp(np.cumsum(rets2)),
+                   100 * np.exp(np.cumsum(np.full(n, 0.0001) + noise)),
+                   100 * np.exp(np.cumsum(np.full(n, 0.0001) + noise)),
+                   100 * np.exp(np.cumsum(np.full(n, 0.0001) + noise))])
+    hs = 3000 * np.exp(np.cumsum(np.full(n, 0.0002)))
+    cfg_v = YanyanConfig(cash_skip_buffer=False)
+    cfg_m = YanyanConfig(cash_skip_buffer=False, use_vol=False)
+    a1, _, _ = compute_yanyan(cfg_v, names, groups, pm, hs, n)
+    a2, _, _ = compute_yanyan(cfg_m, names, groups, pm, hs, n)
+    e1 = next((x[2] for x in a1 if x[3] == "进场"), None)
+    e2 = next((x[2] for x in a2 if x[3] == "进场"), None)
+    assert e1 == 0, f"vol 归一应首选低波动 A股1, 实际 {e1}"
+    assert e2 == 1, f"纯动量应首选高动量 A股2, 实际 {e2}"

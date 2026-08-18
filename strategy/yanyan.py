@@ -33,6 +33,7 @@ class YanyanConfig:
     # 动量层
     mom_period: int = 20          # MOM20 周期
     vol_period: int = 20          # VOL20 周期
+    use_vol: bool = True          # score = MOM20/VOL20; False = 纯动量 MOM20 (消融用, 默认开)
     switch_buffer: float = 2.0    # 轮动缓冲: 挑战者 MOM20 须超持仓 2%
     overheat_mom: float = 40.0    # 过热态门槛: 持仓 MOM20 > 40%
     overheat_q: float = 3.0       # 过热标的再进场确认: MOM5 > Q
@@ -91,8 +92,11 @@ def compute_yanyan(cfg: YanyanConfig, names: List[str], groups: List[str],
         ma200_hs = pd.Series(hs300_p).rolling(cfg.regime_ma).mean().values
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        score_mat = np.where((vol_mat > 0) & ~np.isnan(mom20_mat),
-                             mom20_mat / np.where(vol_mat > 0, vol_mat, np.nan), np.nan)
+        if cfg.use_vol:
+            score_mat = np.where((vol_mat > 0) & ~np.isnan(mom20_mat),
+                                 mom20_mat / np.where(vol_mat > 0, vol_mat, np.nan), np.nan)
+        else:
+            score_mat = np.where(~np.isnan(mom20_mat), mom20_mat, np.nan)
 
     # 有效起点: 沪深300 MA 就绪 且 ≥2 标的可排名
     vs = 0
