@@ -536,3 +536,37 @@ def test_vix_spike_exit_sells_nz():
                                      inp["mom10_mat"], inp["sh_mom"], inp["cyb_idx_p"],
                                      inp["sh_idx_p"], n, pre_mats={"vix": vix})
     assert not any(a[3] == "VIX异动" for a in actions0)
+
+
+# ── 12. 止盈再入场闸门 (accel_reentry_gate) ──
+def test_accel_reentry_gate_delays_rebuy():
+    """加速止盈后 mom10 仍高于阈值期间禁止买回; 回落下方后允许"""
+    from conftest import build_inputs
+    from strategy.signal import calc_accel_thresholds
+    n = 300
+    nz = 100 * np.exp(np.cumsum(np.full(n, 0.003)))              # 纳指稳涨 (常驻候选)
+    gold = np.zeros(n)
+    gold[80:100] = 0.05                                         # 黄金暴涨 → mom10 冲高触发止盈
+    gold[100:110] = -0.005                                      # 高位横盘 (mom10 仍高)
+    gold[110:] = 0.002                                          # 其后企稳 (mom10 逐步回落)
+    prices = {"纳指": nz, "黄金": 100 * np.exp(np.cumsum(gold)),
+              "创业": 100 * np.exp(np.cumsum(np.full(n, 0.0005)))}
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    base = dict(sh_cash=False, crash_enabled=False)
+    cfg0 = SignalConfig(**base)
+    cfg1 = SignalConfig(accel_reentry_gate=True, **base)
+    accel_full = calc_accel_thresholds(inp["mom10_mat"], cfg0)
+    a0, _, _ = compute_signals(cfg0, inp["etf_names"], inp["price_mat"], inp["mom20_mat"],
+                               inp["mom10_mat"], inp["sh_mom"], inp["cyb_idx_p"],
+                               inp["sh_idx_p"], n, pre_mats={"accel_th": accel_full})
+    a1, _, _ = compute_signals(cfg1, inp["etf_names"], inp["price_mat"], inp["mom20_mat"],
+                               inp["mom10_mat"], inp["sh_mom"], inp["cyb_idx_p"],
+                               inp["sh_idx_p"], n, pre_mats={"accel_th": accel_full})
+    exit0 = next((a for a in a0 if a[3] == "加速止盈" and a[1] == 1), None)
+    assert exit0 is not None, f"场景未触发黄金止盈: {[a[3] for a in a0]}"
+    t_exit = exit0[0]
+    rebuy0 = next((a[0] for a in a0 if a[2] == 1 and a[0] > t_exit), None)
+    rebuy1 = next((a[0] for a in a1 if a[2] == 1 and a[0] > t_exit), None)
+    assert rebuy0 is not None, "无闸门时黄金应被快速买回"
+    assert rebuy1 is None or rebuy1 > rebuy0, \
+        f"闸门应推迟/阻止黄金买回: 无闸门 t={rebuy0}, 有闸门 t={rebuy1}"

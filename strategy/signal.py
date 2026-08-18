@@ -48,6 +48,7 @@ class SignalConfig:
     defensive_enabled: bool = False  # 防御切换: 空仓信号触发时改持防御资产(动量最强且为正)
     risk_adj_mom: bool = False     # 风险调整动量: 排名用 动量/20日波动率 (阈值仍用原始动量)
     accel_cooldown: int = 0        # 加速止盈后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免)
+    accel_reentry_gate: bool = False  # 止盈再入场闸门: 加速止盈后须 mom10 回落到自身止盈阈值下方才允许买回 (0=关闭; 2026-08-18 研究, 打断黄金blow-off循环)
     stop_cooldown: int = 0         # 止损/绝对止损后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免; 按标的独立计时)
     sh_cash_cooldown: int = 3      # 上证空仓后再入场冷却天数 (0=关闭, 恐慌抄底豁免; 2026-08 起默认3天)
     sh_cash_exempt: bool = False   # 上证空仓仅对A股标的生效 (豁免纳指/黄金)
@@ -446,6 +447,7 @@ def compute_signals(
     gap_hist = []                    # 快速通道σ自适应: 每日动量领先差历史(最多60天)
     crash_held_until = -1
     accel_block_idx = -1; accel_block_until = -1   # 加速止盈冷却状态
+    accel_gate = np.zeros(n_etfs, dtype=bool)       # 止盈再入场闸门 (按标的, mom10回落解除)
     sh_cash_block_until = -1                        # 空仓再入场冷却状态
     stop_block_until = np.full(n_etfs, -1)          # 止损冷却状态 (按标的独立计时)
     crash_alloc_now = 0.0                           # 恐慌抄底当前仓位比例 (0=无抄底叠加仓)
@@ -657,6 +659,15 @@ def compute_signals(
             if sb.any():
                 score = np.where(sb, np.nan, score)
 
+        # ── 止盈再入场闸门: mom10 回落到止盈阈值下方自动解除; 未解除者移出候选 ──
+        if cfg.accel_reentry_gate and accel_gate.any():
+            for _i in np.where(accel_gate)[0]:
+                _th = accel_th_mat[_i, t]
+                if np.isnan(_th) or (not np.isnan(mom10_mat[_i, t]) and mom10_mat[_i, t] < _th):
+                    accel_gate[_i] = False
+            if accel_gate.any():
+                score = np.where(accel_gate, np.nan, score)
+
         sv = ~np.isnan(score)
         ti = int(np.argmax(np.where(sv, score, -np.inf))) if sv.any() else ti_raw
         # 候选全被冷却时 ti 回退为原始动量第一(本身在冷却期): 禁止向其切换/买入,
@@ -755,13 +766,16 @@ def compute_signals(
                           if nm in SH_CASH_EXEMPT_NAMES and vm[i]]
                 bought = False
                 if ex_idx:
-                    ei = max(ex_idx, key=lambda i: ms[i])
-                    lm = ms[ei]
-                    if (not np.isnan(lm) and not entry_blocked(ei, t) and trend_ok(ei, t)
-                            and (lm >= cfg.cash_skip_gt or streak >= cfg.confirm_days)):
-                        sw = True; np_pos = ei; streak = 0
-                        reason = ">3%即买(豁免)" if lm >= cfg.cash_skip_gt else "确认买入(豁免)"
-                        bought = True
+                    if cfg.accel_reentry_gate:
+                        ex_idx = [i for i in ex_idx if not accel_gate[i]]
+                    if ex_idx:
+                        ei = max(ex_idx, key=lambda i: ms[i])
+                        lm = ms[ei]
+                        if (not np.isnan(lm) and not entry_blocked(ei, t) and trend_ok(ei, t)
+                                and (lm >= cfg.cash_skip_gt or streak >= cfg.confirm_days)):
+                            sw = True; np_pos = ei; streak = 0
+                            reason = ">3%即买(豁免)" if lm >= cfg.cash_skip_gt else "确认买入(豁免)"
+                            bought = True
                 if not bought:
                     sw = True; np_pos = -1; streak = 0; reason = "上证空仓"
             elif cfg.defensive_enabled:
@@ -948,6 +962,8 @@ def compute_signals(
             if accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0:
                 accel_block_idx = old_pos
                 accel_block_until = t + cfg.accel_cooldown
+            if accel_exit and old_pos >= 0 and cfg.accel_reentry_gate:
+                accel_gate[old_pos] = True
             if (reason in ("止损", "绝对止损") and old_pos >= 0
                     and cfg.stop_cooldown > 0):
                 stop_block_until[old_pos] = t + cfg.stop_cooldown
