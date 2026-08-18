@@ -207,9 +207,10 @@ def run_backtest(params):
         sh_mom = _lag_mom(sh_price, mom_period, _mom_lag)
 
     # ── 纳指动量信号源混合: (1-w)×513100 ETF动量 + w×QQQ-CNY动量 (I组审计 2026-08-17) ──
-    # 信号用混合动量, 净值/止损仍按 513100 成交价; w=0 与基线逐分一致
-    _nz_w = float(params.get("nz_mom_qqq_w", 0.0))
-    if _nz_w > 0 and "纳指" in etf_names:
+    # 信号用混合动量, 净值/止损仍按 513100 成交价; on=False(默认) 与基线逐分一致
+    _nz_on = bool(params.get("nz_mom_qqq_on", False))
+    _nz_w = min(max(float(params.get("nz_mom_qqq_w", 0.7)), 0.0), 1.0)
+    if _nz_on and _nz_w > 0 and "纳指" in etf_names:
         from data.usfeed import load_qqq_cny, align_to_cn
         _qq = align_to_cn(_all_full, load_qqq_cny())
         if params.get("ridge_on", False):

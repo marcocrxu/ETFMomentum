@@ -64,6 +64,17 @@
         </div>
 
         <div class="param-group">
+          <label class="group-label" title="纳指动量混入 QQQ×USDCNY 人民币口径动量: (1-w)×513100 + w×QQQ-CNY; 默认关=基线 (I组补遗5, w∈[0.6,0.75] 通过OOS)">纳指动量混合QQQ</label>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="nz_mom_qqq_on">
+              <span class="track"></span>
+            </label>
+            <input id="nz_mom_qqq_w" type="number" value="0.7" min="0" max="1" step="0.05" style="width: 64px">
+          </div>
+        </div>
+
+        <div class="param-group">
           <label class="group-label" title="动量周期 mp-1/mp/mp+1/mp+2 四周期等权集成, 不押单一窗口">山脊集成</label>
           <div class="toggle-row">
             <label class="toggle">

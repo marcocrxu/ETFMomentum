@@ -116,6 +116,8 @@ function collectParams() {
     fip_on: document.getElementById('fip_on').checked,
     top_k: +document.getElementById('top_k').value || 1,
     mom_skip: +document.getElementById('mom_skip').value || 0,
+    nz_mom_qqq_on: document.getElementById('nz_mom_qqq_on').checked,
+    nz_mom_qqq_w: +document.getElementById('nz_mom_qqq_w').value || 0.7,
     ridge_on: document.getElementById('ridge_on').checked,
     mom_type: document.getElementById('mom_type').value,
     abs_stop_on: document.getElementById('abs_stop_on').checked,
@@ -362,6 +364,8 @@ function applyConfig(cfg) {
   setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
   setVal('top_k', cfg.top_k);
   setVal('mom_skip', cfg.mom_skip);
+  setChecked('nz_mom_qqq_on', cfg.nz_mom_qqq_on);
+  setVal('nz_mom_qqq_w', cfg.nz_mom_qqq_w);
   setChecked('ridge_on', cfg.ridge_on);
   setVal('mom_type', cfg.mom_type);
   setChecked('abs_stop_on', cfg.abs_stop_on);
