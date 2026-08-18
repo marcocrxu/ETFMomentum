@@ -50,3 +50,11 @@ def test_submit_rejects_short_desc(monkeypatch, tmp_path):
     monkeypatch.setattr(lb, "_ensure_worker", lambda: None)
     item, err = lb.submit_custom("太短")
     assert item is None and "太短" in err
+
+
+def test_safe_scan_blocks_malicious(monkeypatch):
+    import web.leaderboard as lb
+    bad = "import os\nos.system('rm -rf /')\nsubprocess.run(['x'])\nopen('/root/.bashrc')\n"
+    assert lb._safe_scan(bad), "恶意代码应被拦截"
+    good = "import numpy as np\nfrom data.feed import TushareFeed\n\ndef run(params):\n    return {}\n"
+    assert lb._safe_scan(good) == [], "正常代码不应误伤"

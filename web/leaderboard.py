@@ -335,9 +335,51 @@ def _generate(item):
     return code_path
 
 
+BANNED_PATTERNS = (
+    # 危险调用 (合法 import os/sys 不受影响)
+    "os.system", "os.popen", "os.remove", "os.rename", "os.unlink", "os.chmod",
+    "os.chown", "os.kill", "os.execl", "os.execv", "os.startfile", "os.mkdir",
+    "subprocess", "socket", "shutil", "import requests", "from requests",
+    "urllib", "http.client", "ftplib", "telnetlib", "eval(", "exec(", "__import__",
+    "open(", "remove(", "unlink", "rmtree", "chmod", "chown", "kill(", "signal",
+    "multiprocessing", "threading", ".bashrc", "MYTRACK_KEY", "LEADERBOARD_TOKEN",
+)
+
+
+def _safe_scan(code):
+    """生成代码静态安全检查: 命中危险模式即拒执行 (防注入式描述生成恶意代码)"""
+    hits = [p for p in BANNED_PATTERNS if p in code]
+    return hits
+
+
+def _limit_resources():
+    """子进程资源限制: CPU/内存/文件/进程数上限 (防死循环/刷盘/fork炸弹)"""
+    import resource
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (300, 300))
+        resource.setrlimit(resource.RLIMIT_AS, (4 * 1024 ** 3, 4 * 1024 ** 3))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (256 * 1024 ** 2, 256 * 1024 ** 2))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+    except Exception:
+        pass
+
+
 def _execute(item):
-    """子进程执行生成的 run(params), 返回指标 dict"""
+    """子进程执行生成的 run(params), 返回指标 dict (静态扫描 + 资源限制 + 环境隔离)"""
     code_path = os.path.join(CUSTOM_DIR, item["id"] + ".py")
+    with open(code_path) as f:
+        code = f.read()
+    hits = _safe_scan(code)
+    if hits:
+        raise RuntimeError("代码未通过安全扫描 (命中: %s)" % ",".join(hits[:5]))
+    workdir = os.path.join(CUSTOM_DIR, item["id"])
+    os.makedirs(workdir, exist_ok=True)
+    # 隔离环境: 清除全部密钥类变量, 只留最小运行环境
+    env = {k: v for k, v in os.environ.items()
+           if not any(t in k.upper() for t in ("KEY", "TOKEN", "SECRET", "CREDENTIAL", "PASSWORD"))}
+    env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+    env.setdefault("HOME", "/root")
     script = (
         "import sys, json, importlib.util\n"
         "sys.path.insert(0, '/root/etf_strategy')\n"
@@ -350,8 +392,10 @@ def _execute(item):
         "print(json.dumps(out, default=str))\n"
     ) % (item["id"], code_path, LB_START, LB_END)
     try:
-        r = subprocess.run(["python3", "-c", script], cwd=REPO_DIR,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=600)
+        r = subprocess.run(["python3", "-c", script], cwd=workdir, env=env,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=600,
+                           preexec_fn=_limit_resources)
     except subprocess.TimeoutExpired:
         raise RuntimeError("回测执行超时(600s)")
     if r.returncode != 0:
