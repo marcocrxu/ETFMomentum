@@ -206,6 +206,23 @@ def run_backtest(params):
         mom20_mat = np.array([_lag_mom(prices[nm], mom_period, _mom_lag) for nm in etf_names])
         sh_mom = _lag_mom(sh_price, mom_period, _mom_lag)
 
+    # ── 纳指动量信号源混合: (1-w)×513100 ETF动量 + w×QQQ-CNY动量 (I组审计 2026-08-17) ──
+    # 信号用混合动量, 净值/止损仍按 513100 成交价; w=0 与基线逐分一致
+    _nz_w = float(params.get("nz_mom_qqq_w", 0.0))
+    if _nz_w > 0 and "纳指" in etf_names:
+        from data.usfeed import load_qqq_cny, align_to_cn
+        _qq = align_to_cn(_all_full, load_qqq_cny())
+        if params.get("ridge_on", False):
+            _qm20 = mom_ens(_qq)
+        elif _mom_lag > 0:
+            _qm20 = _lag_mom(_qq, mom_period, _mom_lag)
+        else:
+            _qm20 = _rank_mom(_qq, mom_period, _mom_skip)
+        _qm10 = mom(_qq, max(5, mom_period // 2))
+        _nz_i = etf_names.index("纳指")
+        mom20_mat[_nz_i] = (1 - _nz_w) * mom20_mat[_nz_i] + _nz_w * _qm20
+        mom10_mat[_nz_i] = (1 - _nz_w) * mom10_mat[_nz_i] + _nz_w * _qm10
+
     # 从用户起始日重新跑模拟 (动量已预热)
     _p_user = price_mat[:, _pre_days:]
     # 派生矩阵在全量历史上预计算再切片: accel阈值/mom60/vol/fip 与恐慌抄底同口径,

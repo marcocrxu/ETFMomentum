@@ -161,3 +161,28 @@ class TestChecksOK:
                           "start_date": "2016-07-07", "end_date": "2026-07-28"})
         non_ok = [c for c in r["checks"] if "OK" not in str(c) and "天数" not in str(c)]
         assert not non_ok, f"自检异常: {non_ok}"
+
+
+class TestNzMomQqqBlend:
+    """I 组: 纳指动量混合 QQQ-CNY (nz_mom_qqq_w), 需真实缓存"""
+
+    def test_w0_equals_baseline(self):
+        _skip_if_no_data()
+        from web.bt_runner import run_backtest
+        r0 = run_backtest({"universe": "纳指,黄金,创业",
+                           "start_date": "2016-07-07", "end_date": "2026-08-12"})
+        r1 = run_backtest({"universe": "纳指,黄金,创业",
+                           "start_date": "2016-07-07", "end_date": "2026-08-12",
+                           "nz_mom_qqq_w": 0.0})
+        assert r0["total_ret"] == r1["total_ret"], "w=0 应与基线逐分一致"
+        assert r0["trade_count"] == r1["trade_count"]
+
+    def test_w1_differs_and_checks_ok(self):
+        _skip_if_no_data()
+        from web.bt_runner import run_backtest
+        r = run_backtest({"universe": "纳指,黄金,创业",
+                          "start_date": "2016-07-07", "end_date": "2026-08-12",
+                          "nz_mom_qqq_w": 1.0})
+        assert "error" not in r, r.get("error")
+        assert r["checks"] == ["OK"], r["checks"]
+        assert r["total_ret"] > 0

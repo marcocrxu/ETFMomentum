@@ -1,0 +1,54 @@
+{
+ "qqq_range": [
+  "2013-06-03",
+  "2026-08-13"
+ ],
+ "默认窗": {
+  "corr_mom20": 0.8731,
+  "abs_diff_pp": 1.601,
+  "top1_flip_days": 229,
+  "baseline": {
+   "total_ret": 3595.1,
+   "ann": 44.89,
+   "mdd": -21.47,
+   "calmar": 2.09,
+   "sharpe": 1.7
+  },
+  "hybrid_qqq": {
+   "total_ret": 3374.6,
+   "ann": 43.98,
+   "mdd": -27.36,
+   "calmar": 1.61,
+   "sharpe": 1.67
+  },
+  "delta": {
+   "total_ret": -220.5,
+   "mdd": -5.89,
+   "calmar": -0.48
+  }
+ },
+ "长窗": {
+  "corr_mom20": 0.8755,
+  "abs_diff_pp": 1.539,
+  "top1_flip_days": 251,
+  "baseline": {
+   "total_ret": 5267.4,
+   "ann": 42.73,
+   "mdd": -22.28,
+   "calmar": 1.92,
+   "sharpe": 1.57
+  },
+  "hybrid_qqq": {
+   "total_ret": 6059.0,
+   "ann": 44.5,
+   "mdd": -27.36,
+   "calmar": 1.63,
+   "sharpe": 1.61
+  },
+  "delta": {
+   "total_ret": 791.6,
+   "mdd": -5.08,
+   "calmar": -0.29
+  }
+ }
+}
