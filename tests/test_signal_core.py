@@ -492,3 +492,47 @@ def test_fast_ma_gate_passes_above_ma60():
     actions, _, _ = compute_signals(cfg, **inp)
     assert any(a[3] == ">3%切换" for a in actions), \
         f"高于MA60的挑战者应被放行: {[a[3] for a in actions]}"
+
+
+# ── 11. VIX 恐慌门 (vix_gate / vix_spike_exit) ──
+def test_vix_gate_blocks_nz_entry():
+    """VIX>门槛时禁止新买纳指; VIX 回落后恢复"""
+    from conftest import build_inputs
+    n = 400
+    nz = 100 * np.exp(np.cumsum(np.full(n, 0.004)))          # 纳指最强
+    prices = {"纳指": nz, "黄金": 100 * np.exp(np.cumsum(np.full(n, 0.001))),
+              "创业": 100 * np.exp(np.cumsum(np.full(n, 0.0005)))}
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    vix = np.where(np.arange(n) < 100, 30.0, 18.0)           # 前100天 VIX 高企
+    cfg = SignalConfig(vix_gate=25.0, accel_enabled=False, sh_cash=False, crash_enabled=False)
+    pre = {"vix": vix}
+    actions, _, _ = compute_signals(cfg, inp["etf_names"], inp["price_mat"],
+                                    inp["mom20_mat"], inp["mom10_mat"], inp["sh_mom"],
+                                    inp["cyb_idx_p"], inp["sh_idx_p"], n, pre_mats=pre)
+    entries = [a for a in actions if a[3] == ">3%即买" or a[3] == "确认买入"]
+    assert entries and entries[0][0] >= 100, \
+        f"VIX 高企期间不应买纳指, 首次买入 t={entries[0][0] if entries else None}"
+
+
+def test_vix_spike_exit_sells_nz():
+    """VIX 单日飙升≥阈值时清纳指"""
+    from conftest import build_inputs
+    n = 400
+    prices = {"纳指": 100 * np.exp(np.cumsum(np.full(n, 0.004))),
+              "黄金": 100 * np.exp(np.cumsum(np.full(n, 0.001))),
+              "创业": 100 * np.exp(np.cumsum(np.full(n, 0.0005)))}
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    vix = np.full(n, 15.0)
+    vix[250] = 20.0                                            # 单日 +33%
+    cfg = SignalConfig(vix_spike_exit=20.0, accel_enabled=False, sh_cash=False, crash_enabled=False)
+    actions, _, _ = compute_signals(cfg, inp["etf_names"], inp["price_mat"],
+                                    inp["mom20_mat"], inp["mom10_mat"], inp["sh_mom"],
+                                    inp["cyb_idx_p"], inp["sh_idx_p"], n, pre_mats={"vix": vix})
+    assert any(a[3] == "VIX异动" and a[1] == 0 for a in actions), \
+        f"VIX 异动未清纳指: {[a[3] for a in actions]}"
+    # 默认关闭时不触发
+    actions0, _, _ = compute_signals(SignalConfig(accel_enabled=False, sh_cash=False, crash_enabled=False),
+                                     inp["etf_names"], inp["price_mat"], inp["mom20_mat"],
+                                     inp["mom10_mat"], inp["sh_mom"], inp["cyb_idx_p"],
+                                     inp["sh_idx_p"], n, pre_mats={"vix": vix})
+    assert not any(a[3] == "VIX异动" for a in actions0)

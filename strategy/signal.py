@@ -28,6 +28,8 @@ class SignalConfig:
     exception_gap_sigma: float = 0.0 # 快速通道σ自适应: 门槛=max(exception_gap, k×滚动60日gapσ) (0=关闭)
     fast_lane_staged: bool = False  # 快速通道分档切换: gap∈[exception_gap, fast_full_gap) 切50%成核心+卫星组合, ≥fast_full_gap 切100% (0=关闭=旧行为; 仅Top-1路径)
     fast_full_gap: float = 5.0      # 分档切换全切档位 (仅 fast_lane_staged=True 时生效)
+    vix_gate: float = 0.0            # VIX恐慌门: VIX>此值时禁止新买/切换纳指 (0=关闭; 美股侧恐慌保护, 2026-08-18 研究)
+    vix_spike_exit: float = 0.0      # VIX异动离场: VIX单日涨幅>=此%时, 持纳指立即离场 (0=关闭)
     fast_lane_ma: int = 0            # 快速通道追涨闸门: 挑战者现价须高于自身MA(N)才走快速通道 (0=关闭; 2026-08-17 消融为负优化默认关: 被拦切换恰是历史最优档83%胜率/均盈+4.5%; 被拦时落回慢通道=min_hold后正常切换)
     commission: float = 0.0001     # 手续费率(单边)
     slippage: float = 0.0          # 滑点/冲击成本(单边)
@@ -494,6 +496,11 @@ def compute_signals(
                 ma_full[_i] = pd.Series(price_mat[_i]).rolling(cfg.trend_ma).mean().values
             ma_mat = ma_full
 
+    # ── VIX 恐慌序列 (pre_mats["vix"] 传入, 已按决策区对齐且无前视) ──
+    vix_arr = (pre_mats or {}).get("vix")
+    if vix_arr is not None:
+        vix_arr = np.asarray(vix_arr, dtype=float)
+
     # ── 快速通道追涨闸门均线 (挑战者须高于自身MA(N)才走快速通道; 优先用全量历史预计算值防冷启动,
     #    内部冷启动兜底时窗口前N-1天为NaN→闸门放行, 仅影响极短回测窗口起点) ──
     ma_gate_mat = None
@@ -762,6 +769,13 @@ def compute_signals(
             # (锁仓期内豁免, 避免抄底仓位次日被门卖掉)
             if pos >= 0:
                 sw = True; np_pos = -1; streak = 0; reason = "绝对动量空仓"
+        elif (cfg.vix_spike_exit > 0 and pos >= 0 and etf_names[pos] == "纳指"
+                and t >= crash_held_until and vix_arr is not None
+                and not np.isnan(vix_arr[t]) and not np.isnan(vix_arr[max(0, t - 1)])
+                and vix_arr[max(0, t - 1)] > 0
+                and (vix_arr[t] / vix_arr[max(0, t - 1)] - 1) * 100 >= cfg.vix_spike_exit):
+            # VIX 异动离场: 美股恐慌单日飙升 → 清纳指到空仓
+            sw = True; np_pos = -1; streak = 0; reason = "VIX异动"
         elif sat_pos >= 0:
             # ── 分档切换组合 (核心+卫星): 双腿风控 / 升级全切 / 卫星回撤 / 卫星追新 ──
             base, sat = pos, sat_pos
@@ -850,6 +864,9 @@ def compute_signals(
                     pass  # 动量耗尽门: 候选已耗尽/减速/超买, 保持空仓等待
                 elif not trend_ok(ti, t):
                     pass  # 趋势门: 候选低于自身长均线, 保持空仓
+                elif (cfg.vix_gate > 0 and etf_names[ti] == "纳指" and vix_arr is not None
+                        and not np.isnan(vix_arr[t]) and vix_arr[t] > cfg.vix_gate):
+                    pass  # VIX恐慌门: 美股恐慌期不新买纳指
                 elif lm >= cfg.cash_skip_gt and not np.isnan(lm):
                     sw = True; np_pos = ti; streak = 0; reason = ">3%即买"
                 elif streak >= cfg.confirm_days:
@@ -880,6 +897,9 @@ def compute_signals(
                 pass  # 排名缓冲: 持仓仍在前N名, 不切换
             elif not trend_ok(ti, t):
                 pass  # 趋势门: 候选低于自身长均线, 不切换
+            elif (cfg.vix_gate > 0 and etf_names[ti] == "纳指" and vix_arr is not None
+                    and not np.isnan(vix_arr[t]) and vix_arr[t] > cfg.vix_gate):
+                pass  # VIX恐慌门: 美股恐慌期不切向纳指
             elif fast_gap and met and hd >= cfg.fast_min_hold:
                 if (cfg.fast_lane_staged and cfg.fast_full_gap > cfg.exception_gap
                         and gap < cfg.fast_full_gap):
