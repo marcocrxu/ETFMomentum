@@ -121,3 +121,14 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 - 每次修改策略后：跑 pytest → 跑基线回测确认逐分一致 → 跑消融 → 在 `audit/审计结果清单.md` 或台账登记结论（哪怕是否决）。
 - 用户报告"回测不对"：先 curl API + 查 `checks` 字段 + 查数据缓存，再下结论。
 - 审计脚本风格：独立 `[a-z]_group.py` + `harness.py` 复用数据准备，输出 JSON 到 `audit/out/`，结论写回清单 md。
+
+## yanyan 策略 (2026-08-17 新增, 用户备注 yanyan)
+
+独立于主引擎的新策略, 单独页面 `/yanyan` + API `/api/yanyan/run`:
+- `strategy/yanyan.py` 引擎 / `web/yanyan_runner.py` 回测编排 / `web/templates/yanyan.html` + `web/static/js/yanyan.js` 页面
+- **体制层**: 沪深300 现价 < MA200 = 熊市 → A股池(7只)禁持仓, 只许 跨境(纳指/港股创新药)+黄金
+- **动量层**: score = MOM20/VOL20; 进场=score第一且MOM20>0; 离场=持仓MOM20转负;
+  轮动缓冲=挑战者MOM20超持仓2%; 过热=MOM20>40% 时离场收紧为 MOM5<0, 再进场须 MOM5>Q(3)
+- 标的池 11 只: A股7 + 跨境2 + 黄金 + 货币511880(空仓停靠, 不入排名); 时变宇宙(NaN掩码)
+- 基准成绩 (2016-07-07~2026-08-12): total +587.8% / 年化 21.9% / DD -26.6% / Calmar 0.82 / 仅 1 个负年
+- 测试: tests/test_yanyan.py (5 个合成单测, 含牛熊开关/动量转负/轮动缓冲/过热闸门)

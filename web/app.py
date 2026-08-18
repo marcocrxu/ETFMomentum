@@ -15,6 +15,19 @@ def index():
 def analysis():
     return render_template("analysis.html")
 
+@app.route("/yanyan")
+def yanyan():
+    return render_template("yanyan.html")
+
+@app.route("/api/yanyan/run", methods=["POST"])
+def api_yanyan_run():
+    from web.yanyan_runner import run_yanyan
+    params = request.get_json(silent=True) or {}
+    result = run_yanyan(params)
+    if "error" in result:
+        return jsonify({"success": False, "error": result["error"]}), 400
+    return jsonify({"success": True, "data": result})
+
 @app.route("/api/bt/run", methods=["POST"])
 def api_bt_run():
     params = request.get_json(silent=True) or {}
