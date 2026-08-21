@@ -1,0 +1,569 @@
+{
+  "universe": "纳指,黄金,创业",
+  "window": [
+    "2016-07-07",
+    "2026-08-21"
+  ],
+  "baseline": {
+    "total_ret": 3801.44,
+    "calmar": 2.45
+  },
+  "summary": {
+    "20": {
+      "overall": {
+        "n": 2050,
+        "winA": 62.15,
+        "mean_diff": 1.92,
+        "median_diff": 0.93,
+        "meanA": 3.35,
+        "meanB": 1.43,
+        "medianA": 2.38,
+        "medianB": 0.0,
+        "meanD": 2.37,
+        "wait_median": 9.0,
+        "wait_p90": 20.0,
+        "wait_mean": 10.5,
+        "never_switch_pct": 24.88
+      },
+      "overall_dist": {
+        "n": 2050,
+        "A_big_ge5": 19.17,
+        "A_small_1_5": 29.9,
+        "tie_abs1": 27.46,
+        "B_small_1_5": 19.76,
+        "B_big_le5": 3.71,
+        "A_p95": 11.2,
+        "B_p5": -4.3
+      },
+      "by_pos": {
+        "创业": {
+          "n": 692,
+          "winA": 58.24,
+          "mean_diff": 2.79,
+          "median_diff": 1.02,
+          "meanA": 4.08,
+          "meanB": 1.29,
+          "medianA": 3.2,
+          "medianB": 0.0,
+          "meanD": 2.84,
+          "wait_median": 8.0,
+          "wait_p90": 20.0,
+          "wait_mean": 9.9,
+          "never_switch_pct": 21.39
+        },
+        "纳指": {
+          "n": 888,
+          "winA": 66.89,
+          "mean_diff": 1.72,
+          "median_diff": 1.34,
+          "meanA": 2.62,
+          "meanB": 0.9,
+          "medianA": 2.11,
+          "medianB": 0.0,
+          "meanD": 1.89,
+          "wait_median": 12.0,
+          "wait_p90": 20.0,
+          "wait_mean": 12.0,
+          "never_switch_pct": 32.66
+        },
+        "黄金": {
+          "n": 470,
+          "winA": 58.94,
+          "mean_diff": 1.0,
+          "median_diff": 0.42,
+          "meanA": 3.66,
+          "meanB": 2.66,
+          "medianA": 2.09,
+          "medianB": 0.36,
+          "meanD": 2.57,
+          "wait_median": 7.0,
+          "wait_p90": 20.0,
+          "wait_mean": 8.8,
+          "never_switch_pct": 15.32
+        }
+      },
+      "by_pos_dist": {
+        "创业": {
+          "n": 692,
+          "A_big_ge5": 28.47,
+          "A_small_1_5": 21.68,
+          "tie_abs1": 18.06,
+          "B_small_1_5": 24.42,
+          "B_big_le5": 7.37,
+          "A_p95": 16.4,
+          "B_p5": -5.6
+        },
+        "纳指": {
+          "n": 888,
+          "A_big_ge5": 16.22,
+          "A_small_1_5": 37.95,
+          "tie_abs1": 26.24,
+          "B_small_1_5": 17.57,
+          "B_big_le5": 2.03,
+          "A_p95": 8.3,
+          "B_p5": -3.7
+        },
+        "黄金": {
+          "n": 470,
+          "A_big_ge5": 11.06,
+          "A_small_1_5": 26.81,
+          "tie_abs1": 43.62,
+          "B_small_1_5": 17.02,
+          "B_big_le5": 1.49,
+          "A_p95": 7.2,
+          "B_p5": -2.8
+        }
+      },
+      "by_mom20": {
+        "mom20_positive": {
+          "n": 1849,
+          "winA": 61.6,
+          "mean_diff": 1.91,
+          "median_diff": 0.92,
+          "meanA": 3.24,
+          "meanB": 1.33,
+          "medianA": 2.32,
+          "medianB": 0.0,
+          "meanD": 2.28,
+          "wait_median": 10.0,
+          "wait_p90": 20.0,
+          "wait_mean": 10.8,
+          "never_switch_pct": 25.69
+        },
+        "mom20_negative": {
+          "n": 180,
+          "winA": 70.0,
+          "mean_diff": 2.18,
+          "median_diff": 1.03,
+          "meanA": 4.65,
+          "meanB": 2.48,
+          "medianA": 3.47,
+          "medianB": 0.0,
+          "meanD": 3.41,
+          "wait_median": 5.0,
+          "wait_p90": 20.0,
+          "wait_mean": 8.6,
+          "never_switch_pct": 19.44
+        }
+      },
+      "cash_days": 389
+    },
+    "60": {
+      "overall": {
+        "n": 2019,
+        "winA": 62.26,
+        "mean_diff": 2.62,
+        "median_diff": 0.99,
+        "meanA": 10.2,
+        "meanB": 7.58,
+        "medianA": 8.07,
+        "medianB": 5.02,
+        "meanD": 9.15,
+        "wait_median": 9.0,
+        "wait_p90": 34.0,
+        "wait_mean": 14.3,
+        "never_switch_pct": 2.43
+      },
+      "overall_dist": {
+        "n": 2019,
+        "A_big_ge5": 21.94,
+        "A_small_1_5": 27.93,
+        "tie_abs1": 26.0,
+        "B_small_1_5": 20.31,
+        "B_big_le5": 3.81,
+        "A_p95": 13.7,
+        "B_p5": -4.4
+      },
+      "by_pos": {
+        "创业": {
+          "n": 678,
+          "winA": 59.44,
+          "mean_diff": 4.08,
+          "median_diff": 1.13,
+          "meanA": 9.76,
+          "meanB": 5.69,
+          "medianA": 7.21,
+          "medianB": 4.26,
+          "meanD": 8.39,
+          "wait_median": 8.0,
+          "wait_p90": 30.0,
+          "wait_mean": 12.9,
+          "never_switch_pct": 2.21
+        },
+        "纳指": {
+          "n": 871,
+          "winA": 66.36,
+          "mean_diff": 2.29,
+          "median_diff": 1.43,
+          "meanA": 9.1,
+          "meanB": 6.81,
+          "medianA": 7.9,
+          "medianB": 3.96,
+          "meanD": 8.35,
+          "wait_median": 12.0,
+          "wait_p90": 46.0,
+          "wait_mean": 17.8,
+          "never_switch_pct": 3.9
+        },
+        "黄金": {
+          "n": 470,
+          "winA": 58.72,
+          "mean_diff": 1.13,
+          "median_diff": 0.44,
+          "meanA": 12.87,
+          "meanB": 11.74,
+          "medianA": 9.54,
+          "medianB": 7.23,
+          "meanD": 11.75,
+          "wait_median": 7.0,
+          "wait_p90": 24.0,
+          "wait_mean": 9.8,
+          "never_switch_pct": 0.0
+        }
+      },
+      "by_pos_dist": {
+        "创业": {
+          "n": 678,
+          "A_big_ge5": 28.47,
+          "A_small_1_5": 22.57,
+          "tie_abs1": 18.88,
+          "B_small_1_5": 23.45,
+          "B_big_le5": 6.64,
+          "A_p95": 26.5,
+          "B_p5": -5.5
+        },
+        "纳指": {
+          "n": 871,
+          "A_big_ge5": 21.24,
+          "A_small_1_5": 33.52,
+          "tie_abs1": 23.88,
+          "B_small_1_5": 18.71,
+          "B_big_le5": 2.64,
+          "A_p95": 12.3,
+          "B_p5": -3.9
+        },
+        "黄金": {
+          "n": 470,
+          "A_big_ge5": 13.83,
+          "A_small_1_5": 25.32,
+          "tie_abs1": 40.21,
+          "B_small_1_5": 18.72,
+          "B_big_le5": 1.91,
+          "A_p95": 7.5,
+          "B_p5": -3.1
+        }
+      },
+      "by_mom20": {
+        "mom20_positive": {
+          "n": 1824,
+          "winA": 61.57,
+          "mean_diff": 2.65,
+          "median_diff": 0.95,
+          "meanA": 9.88,
+          "meanB": 7.22,
+          "medianA": 7.89,
+          "medianB": 4.88,
+          "meanD": 8.86,
+          "wait_median": 10.0,
+          "wait_p90": 35.0,
+          "wait_mean": 14.8,
+          "never_switch_pct": 2.69
+        },
+        "mom20_negative": {
+          "n": 174,
+          "winA": 71.84,
+          "mean_diff": 2.58,
+          "median_diff": 1.36,
+          "meanA": 15.17,
+          "meanB": 12.59,
+          "medianA": 13.85,
+          "medianB": 9.97,
+          "meanD": 13.67,
+          "wait_median": 5.5,
+          "wait_p90": 26.0,
+          "wait_mean": 10.1,
+          "never_switch_pct": 0.0
+        }
+      },
+      "cash_days": 380
+    },
+    "120": {
+      "overall": {
+        "n": 1967,
+        "winA": 62.02,
+        "mean_diff": 2.69,
+        "median_diff": 1.06,
+        "meanA": 21.09,
+        "meanB": 18.4,
+        "medianA": 18.13,
+        "medianB": 15.23,
+        "meanD": 19.97,
+        "wait_median": 9.0,
+        "wait_p90": 34.0,
+        "wait_mean": 14.6,
+        "never_switch_pct": 0.0
+      },
+      "overall_dist": {
+        "n": 1967,
+        "A_big_ge5": 23.13,
+        "A_small_1_5": 27.4,
+        "tie_abs1": 24.56,
+        "B_small_1_5": 20.44,
+        "B_big_le5": 4.47,
+        "A_p95": 15.6,
+        "B_p5": -4.8
+      },
+      "by_pos": {
+        "创业": {
+          "n": 643,
+          "winA": 58.79,
+          "mean_diff": 4.05,
+          "median_diff": 1.19,
+          "meanA": 21.4,
+          "meanB": 17.36,
+          "medianA": 20.23,
+          "medianB": 15.03,
+          "meanD": 19.98,
+          "wait_median": 8.0,
+          "wait_p90": 31.0,
+          "wait_mean": 13.1,
+          "never_switch_pct": 0.0
+        },
+        "纳指": {
+          "n": 859,
+          "winA": 65.89,
+          "mean_diff": 2.45,
+          "median_diff": 1.48,
+          "meanA": 17.9,
+          "meanB": 15.45,
+          "medianA": 15.4,
+          "medianB": 12.65,
+          "meanD": 17.15,
+          "wait_median": 12.0,
+          "wait_p90": 46.0,
+          "wait_mean": 18.2,
+          "never_switch_pct": 0.0
+        },
+        "黄金": {
+          "n": 465,
+          "winA": 59.35,
+          "mean_diff": 1.26,
+          "median_diff": 0.52,
+          "meanA": 26.54,
+          "meanB": 25.27,
+          "medianA": 22.65,
+          "medianB": 21.69,
+          "meanD": 25.2,
+          "wait_median": 7.0,
+          "wait_p90": 24.0,
+          "wait_mean": 9.9,
+          "never_switch_pct": 0.0
+        }
+      },
+      "by_pos_dist": {
+        "创业": {
+          "n": 643,
+          "A_big_ge5": 29.24,
+          "A_small_1_5": 21.62,
+          "tie_abs1": 17.73,
+          "B_small_1_5": 23.17,
+          "B_big_le5": 8.24,
+          "A_p95": 26.8,
+          "B_p5": -5.8
+        },
+        "纳指": {
+          "n": 859,
+          "A_big_ge5": 22.58,
+          "A_small_1_5": 32.25,
+          "tie_abs1": 22.93,
+          "B_small_1_5": 19.21,
+          "B_big_le5": 3.03,
+          "A_p95": 13.1,
+          "B_p5": -4.3
+        },
+        "黄金": {
+          "n": 465,
+          "A_big_ge5": 15.7,
+          "A_small_1_5": 26.45,
+          "tie_abs1": 36.99,
+          "B_small_1_5": 18.92,
+          "B_big_le5": 1.94,
+          "A_p95": 8.0,
+          "B_p5": -3.4
+        }
+      },
+      "by_mom20": {
+        "mom20_positive": {
+          "n": 1786,
+          "winA": 61.42,
+          "mean_diff": 2.77,
+          "median_diff": 1.06,
+          "meanA": 20.69,
+          "meanB": 17.92,
+          "medianA": 17.62,
+          "medianB": 14.81,
+          "meanD": 19.61,
+          "wait_median": 10.0,
+          "wait_p90": 35.5,
+          "wait_mean": 15.1,
+          "never_switch_pct": 0.0
+        },
+        "mom20_negative": {
+          "n": 160,
+          "winA": 71.25,
+          "mean_diff": 2.21,
+          "median_diff": 1.32,
+          "meanA": 28.49,
+          "meanB": 26.28,
+          "medianA": 22.27,
+          "medianB": 19.81,
+          "meanD": 26.85,
+          "wait_median": 5.0,
+          "wait_p90": 27.0,
+          "wait_mean": 9.6,
+          "never_switch_pct": 0.0
+        }
+      },
+      "cash_days": 372
+    },
+    "250": {
+      "overall": {
+        "n": 1856,
+        "winA": 62.77,
+        "mean_diff": 3.55,
+        "median_diff": 1.4,
+        "meanA": 51.67,
+        "meanB": 48.12,
+        "medianA": 50.54,
+        "medianB": 45.35,
+        "meanD": 50.24,
+        "wait_median": 10.0,
+        "wait_p90": 34.5,
+        "wait_mean": 14.9,
+        "never_switch_pct": 0.0
+      },
+      "overall_dist": {
+        "n": 1856,
+        "A_big_ge5": 28.5,
+        "A_small_1_5": 25.0,
+        "tie_abs1": 20.26,
+        "B_small_1_5": 19.4,
+        "B_big_le5": 6.84,
+        "A_p95": 20.5,
+        "B_p5": -5.8
+      },
+      "by_pos": {
+        "创业": {
+          "n": 581,
+          "winA": 60.07,
+          "mean_diff": 5.12,
+          "median_diff": 1.58,
+          "meanA": 50.34,
+          "meanB": 45.21,
+          "medianA": 49.17,
+          "medianB": 43.23,
+          "meanD": 48.61,
+          "wait_median": 8.0,
+          "wait_p90": 30.0,
+          "wait_mean": 13.0,
+          "never_switch_pct": 0.0
+        },
+        "纳指": {
+          "n": 844,
+          "winA": 66.0,
+          "mean_diff": 3.38,
+          "median_diff": 1.85,
+          "meanA": 50.3,
+          "meanB": 46.93,
+          "medianA": 48.42,
+          "medianB": 46.51,
+          "meanD": 49.29,
+          "wait_median": 12.5,
+          "wait_p90": 46.0,
+          "wait_mean": 18.4,
+          "never_switch_pct": 0.0
+        },
+        "黄金": {
+          "n": 431,
+          "winA": 60.09,
+          "mean_diff": 1.77,
+          "median_diff": 0.72,
+          "meanA": 56.13,
+          "meanB": 54.36,
+          "medianA": 55.55,
+          "medianB": 52.81,
+          "meanD": 54.32,
+          "wait_median": 7.0,
+          "wait_p90": 24.0,
+          "wait_mean": 10.3,
+          "never_switch_pct": 0.0
+        }
+      },
+      "by_pos_dist": {
+        "创业": {
+          "n": 581,
+          "A_big_ge5": 34.77,
+          "A_small_1_5": 18.24,
+          "tie_abs1": 15.15,
+          "B_small_1_5": 19.79,
+          "B_big_le5": 12.05,
+          "A_p95": 32.1,
+          "B_p5": -7.8
+        },
+        "纳指": {
+          "n": 844,
+          "A_big_ge5": 28.67,
+          "A_small_1_5": 28.91,
+          "tie_abs1": 18.96,
+          "B_small_1_5": 18.01,
+          "B_big_le5": 5.45,
+          "A_p95": 18.7,
+          "B_p5": -5.1
+        },
+        "黄金": {
+          "n": 431,
+          "A_big_ge5": 19.72,
+          "A_small_1_5": 26.45,
+          "tie_abs1": 29.7,
+          "B_small_1_5": 21.58,
+          "B_big_le5": 2.55,
+          "A_p95": 11.4,
+          "B_p5": -3.4
+        }
+      },
+      "by_mom20": {
+        "mom20_positive": {
+          "n": 1678,
+          "winA": 62.22,
+          "mean_diff": 3.66,
+          "median_diff": 1.39,
+          "meanA": 51.8,
+          "meanB": 48.14,
+          "medianA": 51.38,
+          "medianB": 45.58,
+          "meanD": 50.42,
+          "wait_median": 10.0,
+          "wait_p90": 36.0,
+          "wait_mean": 15.4,
+          "never_switch_pct": 0.0
+        },
+        "mom20_negative": {
+          "n": 157,
+          "winA": 71.34,
+          "mean_diff": 2.79,
+          "median_diff": 1.56,
+          "meanA": 55.11,
+          "meanB": 52.31,
+          "medianA": 49.46,
+          "medianB": 48.58,
+          "meanD": 53.03,
+          "wait_median": 5.0,
+          "wait_p90": 27.0,
+          "wait_mean": 9.7,
+          "never_switch_pct": 0.0
+        }
+      },
+      "cash_days": 353
+    }
+  }
+}
