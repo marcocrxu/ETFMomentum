@@ -30,11 +30,24 @@ def _fetch(sym, period1="2013-06-01"):
 
 
 def refresh_qqq_cny():
-    """拉取 QQQ + USDCNY 最新日线, 原子写回 data/qqq_usdcny.csv"""
+    """拉取 QQQ + USDCNY 最新日线, 原子写回 data/qqq_usdcny.csv
+
+    用 merge_asof(backward) 而非 inner join: 汇率 bar 的时间戳(北京 07:00 =
+    UTC 前一日 23:00)在 UTC 日期轴上与 QQQ 错位, inner join 会把 QQQ 最新一根
+    丢弃(没有同 UTC 日期的汇率行), 导致 CSV 永远落后一天 → 实盘推送
+    "QQQ-CNY 数据未就绪" 持续回退纯 ETF (2026-08-21 实锤)。
+    backward 语义: 每根 QQQ 配 ≤ 当日的最新汇率, 历史行不变, 仅补齐最新行。
+    """
     q = _fetch("QQQ")
     time.sleep(1)
     fx = _fetch("USDCNY=X")
-    df = q.merge(fx, on="date", how="inner").sort_values("date")
+    q = q.sort_values("date")
+    fx = fx.sort_values("date")
+    # 老 pandas(1.x) 的 merge_asof 要求 datetime64 键, 合并后再转回 date 对象
+    q["date"] = pd.to_datetime(q["date"])
+    fx["date"] = pd.to_datetime(fx["date"])
+    df = pd.merge_asof(q, fx, on="date", direction="backward").dropna()
+    df["date"] = df["date"].dt.date
     tmp = CSV + ".tmp"
     df.to_csv(tmp, index=False)
     os.replace(tmp, CSV)

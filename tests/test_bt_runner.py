@@ -195,7 +195,7 @@ class TestNzMomQqqBlend:
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
                           "nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0,
                           "accel_cooldown": 0, "accel_cooldown_gold_only": False})
-        assert abs(r["total_ret"] - 3374.6) < 0.5, "w=1.0 应与 I-2 纯QQQ口径一致"
+        assert abs(r["total_ret"] - 3198.51) < 0.5, "w=1.0 应与 I-2 纯QQQ口径一致 (2026-08-21 补齐周五数据后重标定)"
         assert "error" not in r, r.get("error")
         assert r["checks"] == ["OK"], r["checks"]
         assert r["total_ret"] > 0
