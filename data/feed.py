@@ -1,5 +1,6 @@
 """统一数据层 — Tushare历史 + 腾讯实时 + 缓存管理"""
 import os
+import threading
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -40,6 +41,16 @@ class TushareFeed(DataFeed):
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
         self._migrate_legacy()
+        # 每代码一把锁: 并发请求对同一代码的 读-改-写 串行化, 防止 .tmp 竞争
+        self._locks = {}
+        self._locks_guard = threading.Lock()
+
+    def _lock_for(self, path: str) -> threading.Lock:
+        with self._locks_guard:
+            lk = self._locks.get(path)
+            if lk is None:
+                lk = self._locks[path] = threading.Lock()
+            return lk
 
     # ── 缓存文件管理 ──
     def _canonical_path(self, code: str) -> str:
@@ -67,9 +78,17 @@ class TushareFeed(DataFeed):
         return None
 
     def _atomic_write(self, path: str, df: pd.DataFrame):
-        tmp = path + ".tmp"
-        df.to_csv(tmp, index=False)
-        os.replace(tmp, path)
+        # 临时文件名唯一化: 固定 ".tmp" 会让并发写同一代码的两个请求互相吃掉
+        # 对方的临时文件 (os.replace 找不到源 → FileNotFoundError, 2026-08-21 实锤)
+        import uuid
+        tmp = "%s.tmp.%s.%s.%s" % (path, os.getpid(), threading.get_ident(), uuid.uuid4().hex[:8])
+        try:
+            df.to_csv(tmp, index=False)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                try: os.remove(tmp)
+                except OSError: pass
 
     # ── 远程拉取 ──
     def _fetch_remote(self, code: str, start: str, end: str) -> Optional[pd.DataFrame]:
@@ -109,6 +128,11 @@ class TushareFeed(DataFeed):
     # ── 主加载逻辑: 增量更新 ──
     def _load_or_fetch(self, code: str, start: str, end: str,
                        adjusted: bool = True) -> Optional[pd.DataFrame]:
+        with self._lock_for(self._canonical_path(code)):
+            return self._load_or_fetch_impl(code, start, end, adjusted)
+
+    def _load_or_fetch_impl(self, code: str, start: str, end: str,
+                            adjusted: bool = True) -> Optional[pd.DataFrame]:
         start_ts = pd.Timestamp(start[:4] + "-" + start[4:6] + "-" + start[6:])
         end_ts = pd.Timestamp(end[:4] + "-" + end[4:6] + "-" + end[6:])
 

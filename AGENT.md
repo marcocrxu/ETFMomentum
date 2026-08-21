@@ -14,6 +14,7 @@
 2. **禁止质疑用户记忆**：用户说"我记得 xx"时，先假设用户对，去验证，不要用"你可能记错了"开头。
 3. **改动默认值/新参数必须过消融**：任何策略开关加入后先跑十年消融（vs 基线 3595/2.09），负优化则默认关闭并写入试验台账。本项目大量开关就是如此默认关掉的——**不要随手打开已否决的开关**（见 §7）。
 4. **禁止扩池**：3→4→8→14 池单调恶化（3595/2.09 → 440/0.44），窄池 3 即最优，已写入纪律（F4）。
+5. **对账基准 = 当前默认口径**：实盘对账页（mytrack）的策略曲线一律用当前默认参数回放，**不做**"当时规则"的点时间回放（用户决议 2026-08-20：策略调整过就按调整过的来，不搞历史口径拼接自欺欺人）。改动默认值后曲线整体重算即可。
 
 ## 3. 目录结构与角色
 
@@ -85,6 +86,13 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 
 - 需要 `web/config_local.py`（Tushare token），否则数据层退化但测试不受影响。
 - 改代码后必跑：**pytest 全绿 + 基线回测逐分不差**（基线 total_ret 应为 3595.13，Calmar 2.09）。
+
+### 5.1 全站门禁与 HTTPS（2026-08-21 上线）
+
+- **门禁**：`web/app.py` 的 `before_request` — 除 `/mytrack/`、`/static/`、`/favicon.ico` 外全部路由要求 session cookie；只有访问 `/mytrack/<MYTRACK_KEY>`（或任意带正确密钥的 mytrack 路由）才种下 `authed` cookie。cookie：HttpOnly + SameSite=Lax + **Secure**（仅 HTTPS）。
+- **HTTPS**：Let's Encrypt shortlived **IP 证书**（`acme.sh --issue -d 8.219.57.219 --alpn --cert-profile shortlived`，约 6 天有效，ARI 自动续期）。正式入口 `https://8.219.57.219/`，nginx 443 → 8082/8081；临时实例配置 `/root/nginx_https.conf`，永久配置 `/etc/nginx/conf.d/etf_https.conf`（由 `bash /root/setup_https_permanent.sh` 安装）。
+- 注意：**HTTP 通道已禁用**。`web/app.py` 应用层对 http 请求一律 403「HTTP 通道已禁用」（钉钉回调走 8081 不受影响）；`setup_https_permanent.sh` 会在 nginx 层把 80 整体断连（return 444）、8080 仅保留 `/api/dingtalk/` 与 `/static/charts/`（钉钉机器人回调+回复图片），其余路径 444 断连。用户入口统一 `https://8.219.57.219`。
+- 签发 IP 证书注意事项：ZeroSSL 已不支持 IP 标识；LE 需 `--cert-profile shortlived` + `--alpn`（443 端口验证，443 安全组已放行）。
 
 ## 6. 已固化的结论与"别重做"清单
 

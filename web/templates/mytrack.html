@@ -37,11 +37,12 @@
     </div>
   </div>
 </div>
-<script src="{{ url_for('static', filename='lib/echarts.min.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/echarts.min.js', v='20260821') }}"></script>
 <script>
 var DATA = {{ data | tojson }};
 var KEY = {{ key | tojson }};
 var records = (DATA.records || []).slice();
+var chartInst = null;   // 净值图实例（实时刷新尾部点位用）
 
 function fmtPct(v, digits){ if (v === null || v === undefined) return '—';
   var s = v.toFixed(digits === undefined ? 2 : digits) + '%';
@@ -55,12 +56,12 @@ function renderMain(){
   if (!DATA.empty && DATA.mine){
     var m = DATA.mine, st = DATA.strat;
     if (DATA.open_pos && DATA.open_pos.length){
-      html += '<div class="open-box">📌 当前持仓：' + DATA.open_pos.map(function(o){
+      html += '<div class="open-box" id="open-pos-box">📌 当前持仓：' + DATA.open_pos.map(function(o){
         return '<b>' + esc(o.asset) + '</b>（成本 ' + o.avg_cost + ' · 仓位 ' + o.weight + '% · 浮盈 ' + fmtPct(o.float_ret) + '）';
       }).join('　') + '</div>';
     }
     html += '<div class="stat-row">'
-      + stat('我的总收益', fmtPct(m.total_ret), '年化 ' + (m.ann > 0 ? '+' : '') + m.ann + '% · 回撤 ' + m.mdd + '%', 'mytag')
+      + statMine(m)
       + stat('策略同期', st ? fmtPct(st.total_ret) : '—', st ? ('年化 ' + (st.ann > 0 ? '+' : '') + st.ann + '% · 回撤 ' + st.mdd + '%') : '策略回测不可用', 'sttag')
       + stat('我 - 策略', st ? fmtPct(m.total_ret - st.total_ret) : '—', '正=跑赢', '')
       + stat('闭合交易', m.n_trades + ' 笔', '胜率 ' + (m.win_rate === null ? '—' : m.win_rate + '%'), '')
@@ -68,11 +69,16 @@ function renderMain(){
           return stat(b.name + '同期', fmtPct(b.total_ret),
             '我' + fmtPct(m.total_ret - b.total_ret) + ' · 回撤 ' + b.mdd + '%', '');
         }).join('')
+      + (DATA.combos || []).map(function(c){
+          return stat(c.name + '组合', fmtPct(c.total_ret),
+            '我' + fmtPct(m.total_ret - c.total_ret) + ' · 回撤 ' + c.mdd + '%', '');
+        }).join('')
       + '</div>';
     html += '<div id="nav-chart" style="width:100%;height:360px"></div>';
     if (DATA.benchmarks && DATA.benchmarks.length){
-      html += '<p class="hint">指数同期 = 该指数从我首笔买入日 rebase 到 1，与我的实盘同窗口对比。</p>';
+      html += '<p class="hint">指数同期 = 该指数从我首笔买入日 rebase 到 1，与我的实盘同窗口对比。图中"我的实盘 / 策略(实时) / 上证指数 / 创业板指数"的最后一个点均为分钟级实时（盘中每 60 秒随现价刷新）；其余曲线在图例里点开。</p>';
     }
+    html += comboPanelHtml();
     if (DATA.trades && DATA.trades.length){
       html += '<h3 style="color:var(--accent);font-size:15px;margin:18px 0 10px">逐笔对账</h3><table><thead><tr>'
         + '<th>标的</th><th>买入日</th><th>买价</th><th>卖出日</th><th>卖价</th>'
@@ -114,6 +120,7 @@ function renderMain(){
   });
   html += '</tbody></table>';
   document.getElementById('main').innerHTML = html;
+  wireCombos();
 
   document.getElementById('add-btn').onclick = function(){
     var r = { date: document.getElementById('f-date').value,
@@ -148,19 +155,235 @@ function renderMain(){
 
   if (!DATA.empty && DATA.mine) drawChart();
 }
+// ── 策略组合对比面板（标的池/参数可调，保存后重算画图）──
+var comboDefs = (DATA.combo_defs || []).map(function(c){
+  return { name: c.name, universe: (c.universe || []).slice(),
+           params: JSON.parse(JSON.stringify(c.params || {})) };
+});
+function comboPanelHtml(){
+  var assets = DATA.assets || [];
+  var html = '<h3 style="color:var(--accent);font-size:15px;margin:18px 0 10px">策略组合对比（标的池/参数可调，保存后重算画图）</h3>';
+  html += '<div id="combo-list">';
+  comboDefs.forEach(function(c, i){
+    html += '<div class="combo-item" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+      + '<div class="form-row">'
+      + '<input type="text" class="c-name" value="' + esc(c.name) + '" style="width:130px">'
+      + assets.map(function(a){
+          var chk = c.universe.indexOf(a) >= 0 ? ' checked' : '';
+          return '<label style="font-size:12px;color:var(--muted)"><input type="checkbox" class="c-asset" data-asset="' + a + '"' + chk + '> ' + a + '</label>';
+        }).join('')
+      + '</div>'
+      + '<div class="form-row">'
+      + '<label style="font-size:12px;color:var(--muted)"><input type="checkbox" class="c-shcash"' + (c.params.sh_cash === false ? '' : ' checked') + '> 上证空仓</label>'
+      + '<label style="font-size:12px;color:var(--muted)"><input type="checkbox" class="c-qqq"' + (c.params.nz_mom_qqq_on === false ? '' : ' checked') + '> QQQ混合</label>'
+      + '<span style="font-size:12px;color:var(--muted)">QQQ权重</span><input type="number" class="c-qqqw" value="' + (c.params.nz_mom_qqq_w !== undefined ? c.params.nz_mom_qqq_w : 0.7) + '" min="0" max="1" step="0.05" style="width:58px">'
+      + '<span style="font-size:12px;color:var(--muted)">动量周期</span><input type="number" class="c-mom" value="' + (c.params.mom_period || 20) + '" min="10" max="60" style="width:62px">'
+      + '<span style="font-size:12px;color:var(--muted)">止盈冷却</span><input type="number" class="c-cd" value="' + (c.params.accel_cooldown !== undefined ? c.params.accel_cooldown : 3) + '" min="0" max="10" style="width:56px">'
+      + '<button class="btn btn-secondary btn-small c-del" data-i="' + i + '">✕ 删除</button>'
+      + '</div></div>';
+  });
+  html += '</div>';
+  html += '<div class="form-row">'
+    + '<button class="btn btn-secondary btn-small" id="combo-add">＋ 添加组合</button>'
+    + '<button class="btn btn-primary btn-small" id="combo-save">💾 保存组合并重算</button>'
+    + '<span id="combo-msg" style="font-size:13px"></span></div>';
+  html += '<p class="hint">组合曲线 = 该标的池按 20 日动量轮动规则（与主策略同引擎、当前默认口径）跑出的净值，起点=我首笔买入日。参数留默认即沿用主策略口径；QQQ权重 0=纯ETF、0.7=主策略口径、1=纯QQQ（从策略）。</p>';
+  return html;
+}
+function wireCombos(){
+  var listEl = document.getElementById('combo-list');
+  if (!listEl) return;
+  function collect(){
+    return comboDefs.map(function(c, i){
+      var item = listEl.children[i];
+      var uni = [];
+      Array.prototype.forEach.call(item.querySelectorAll('.c-asset'), function(chk){
+        if (chk.checked) uni.push(chk.dataset.asset);
+      });
+      var params = {};
+      if (!item.querySelector('.c-shcash').checked) params.sh_cash = false;
+      if (!item.querySelector('.c-qqq').checked) {
+        params.nz_mom_qqq_on = false;
+      } else {
+        var qw = parseFloat(item.querySelector('.c-qqqw').value);
+        if (!isNaN(qw) && qw !== 0.7) params.nz_mom_qqq_w = Math.min(Math.max(qw, 0), 1);
+      }
+      var mp = parseInt(item.querySelector('.c-mom').value, 10);
+      if (mp && mp !== 20) params.mom_period = mp;
+      var cd = parseInt(item.querySelector('.c-cd').value, 10);
+      if (!isNaN(cd) && cd !== 3) params.accel_cooldown = cd;
+      return { name: item.querySelector('.c-name').value, universe: uni, params: params };
+    });
+  }
+  document.getElementById('combo-add').onclick = function(){
+    comboDefs.push({ name: '新组合' + (comboDefs.length + 1), universe: ['纳指', '黄金', '创业'], params: {} });
+    renderMain();
+  };
+  document.getElementById('combo-save').onclick = function(){
+    var msg = document.getElementById('combo-msg');
+    msg.textContent = '保存中…'; msg.style.color = 'var(--muted)';
+    fetch('/mytrack/' + KEY + '/combos/save', { method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({combos: collect()})
+    }).then(function(r){ return r.json().then(function(j){ return {ok: r.ok, j: j}; }); })
+    .then(function(res){
+      if (res.ok && res.j.success){ msg.textContent = '✅ 已保存，重算中…'; msg.style.color = 'var(--green)';
+        setTimeout(function(){ location.reload(); }, 800); }
+      else { msg.textContent = '❌ ' + (res.j.error || '保存失败'); msg.style.color = 'var(--red)'; }
+    }).catch(function(e){ msg.textContent = '❌ 网络错误: ' + e; msg.style.color = 'var(--red)'; });
+  };
+  Array.prototype.forEach.call(listEl.querySelectorAll('.c-del'), function(b){
+    b.onclick = function(){ comboDefs.splice(parseInt(b.dataset.i, 10), 1); renderMain(); };
+  });
+}
 function stat(k, v, s, cls){
   return '<div class="stat-card"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + '</div><div class="s">' + s + '</div></div>';
+}
+function statMine(m){
+  return '<div class="stat-card"><div class="k">我的总收益</div>'
+    + '<div class="v mytag" id="mine-ret">' + fmtPct(m.total_ret) + '</div>'
+    + '<div class="s" id="mine-ret-s">年化 ' + (m.ann > 0 ? '+' : '') + m.ann + '% · 回撤 ' + m.mdd + '%'
+    + '<br>总资产 ¥<span id="mine-eq">' + Number(m.nav_yuan).toLocaleString() + '</span> · 现金 ¥' + Number(m.cash_left).toLocaleString() + '</div></div>';
+}
+// ── 持仓实时刷新（分钟级: 腾讯行情, 60s 轮询）──
+function liveAssets(){
+  var set = [];
+  (DATA.open_pos || []).forEach(function(o){ if (set.indexOf(o.asset) < 0) set.push(o.asset); });
+  if (DATA.strat && DATA.strat.position && set.indexOf(DATA.strat.position) < 0) set.push(DATA.strat.position);
+  (DATA.combos || []).forEach(function(c){ if (c.position && set.indexOf(c.position) < 0) set.push(c.position); });
+  (DATA.benchmarks || []).forEach(function(b){ if (set.indexOf(b.name) < 0) set.push(b.name); });
+  ['QQQ', 'USDCNY'].forEach(function(a){ if (set.indexOf(a) < 0) set.push(a); });
+  return set;
+}
+function computeEq(q){
+  var eq = Number(DATA.mine.cash_left) || 0;
+  (DATA.open_pos || []).forEach(function(o){
+    var p = (q && q[o.asset] && q[o.asset].price) ? q[o.asset].price : o.last;
+    eq += o.units * p;
+  });
+  return eq;
+}
+function renderOpenBox(q, eq){
+  var box = document.getElementById('open-pos-box');
+  if (!box) return;
+  var rows = (DATA.open_pos || []).map(function(o){
+    var p = (q && q[o.asset] && q[o.asset].price) ? q[o.asset].price : o.last;
+    var val = o.units * p;
+    return { o: o, p: p, val: val };
+  });
+  rows.forEach(function(r){ r.ret = r.o.cost > 0 ? (r.val / r.o.cost - 1) * 100 : 0; });
+  var t0 = '';
+  for (var k in q){ if (q[k].time){ t0 = q[k].time; break; } }
+  box.innerHTML = '📌 当前持仓 <span style="color:var(--muted);font-weight:400">（实时 · 分钟级 · ' + (t0 || '—') + '）</span>：'
+    + rows.map(function(r){
+        var w = eq > 0 ? (r.val / eq * 100).toFixed(1) : '0.0';
+        return '<b>' + esc(r.o.asset) + '</b>（成本 ' + r.o.avg_cost + ' · 现价 ' + r.p
+          + ' · 仓位 ' + w + '% · 浮盈 ' + fmtPct(r.ret) + '）';
+      }).join('　')
+    + '　<span id="fx-line" style="color:var(--muted)"></span>';
+  var el = document.getElementById('mine-ret');
+  if (el && DATA.mine.initial_cash){
+    el.innerHTML = fmtPct((eq / DATA.mine.initial_cash - 1) * 100);
+  }
+  var eqEl = document.getElementById('mine-eq');
+  if (eqEl) eqEl.textContent = eq.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  // 外盘: QQQ / USDCNY
+  var fxEl = document.getElementById('fx-line');
+  if (fxEl){
+    var qq = q['QQQ'], cn = q['USDCNY'];
+    if (qq && qq.price && cn && cn.price){
+      fxEl.textContent = '外盘: QQQ $' + qq.price + ' (' + (qq.pct >= 0 ? '+' : '') + qq.pct + '%) · USDCNY ' + cn.price
+        + ' · QQQ-CNY ≈ ¥' + Math.round(qq.price * cn.price) + ' · ' + (qq.time || '');
+    }
+  }
+}
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function _tailOf(nav){
+  var lastIdx = -1;
+  for (var i = nav.length - 1; i >= 0; i--){
+    if (nav[i] !== null && nav[i] !== undefined){ lastIdx = i; break; }
+  }
+  return lastIdx;
+}
+function updateChartLive(q, eq){
+  if (!chartInst) return;
+  var nowD = todayStr();
+  var xdata = DATA.dates.slice();
+  var xAppend = (xdata[xdata.length - 1] !== nowD);
+  var upd = [];
+  // 1) 我的实盘
+  if (eq !== null && eq !== undefined && DATA.mine.initial_cash){
+    var mineNav = DATA.nav.slice();
+    var liveNav = Math.round(eq / DATA.mine.initial_cash * 10000) / 10000;
+    if (xAppend) mineNav.push(liveNav); else mineNav[mineNav.length - 1] = liveNav;
+    upd.push({ id: 'mine', data: mineNav });
+  }
+  // 2) 策略(实时): 尾点 = 昨净值 × 持仓现价/昨收
+  if (DATA.strat && DATA.strat.position && q[DATA.strat.position] && q[DATA.strat.position].prev_close){
+    var sq = q[DATA.strat.position];
+    var snav = DATA.strat.nav.slice();
+    var sTail = _tailOf(snav);
+    var sBase = xAppend ? sTail : sTail - 1;   // 昨天收盘净值
+    if (sBase >= 0 && snav[sBase]){
+      var sLive = Math.round(snav[sBase] * (sq.price / sq.prev_close) * 10000) / 10000;
+      if (xAppend) snav.push(sLive); else snav[sTail] = sLive;
+      upd.push({ id: 'strat', data: snav });
+    }
+  }
+  // 3) 基准指数: 尾点 = 昨收净值 × 现价/昨收
+  (DATA.benchmarks || []).forEach(function(b){
+    var bq = q[b.name];
+    if (!bq || !bq.prev_close) return;
+    var nav = b.nav.slice();
+    var tail = _tailOf(nav);
+    var base = xAppend ? tail : tail - 1;
+    if (base < 0 || !nav[base]) return;
+    var live = Math.round(nav[base] * (bq.price / bq.prev_close) * 10000) / 10000;
+    if (xAppend) nav.push(live); else nav[tail] = live;
+    upd.push({ id: 'idx_' + b.name, data: nav });
+  });
+  // 4) 组合曲线: 尾点 = 昨净值 × 持仓现价/昨收
+  (DATA.combos || []).forEach(function(c, i){
+    if (!c.position) return;
+    var cq = q[c.position];
+    if (!cq || !cq.prev_close) return;
+    var nav = c.nav.slice();
+    var tail = _tailOf(nav);
+    var base = xAppend ? tail : tail - 1;
+    if (base < 0 || !nav[base]) return;
+    var live = Math.round(nav[base] * (cq.price / cq.prev_close) * 10000) / 10000;
+    if (xAppend) nav.push(live); else nav[tail] = live;
+    upd.push({ id: 'combo_' + i, data: nav });
+  });
+  if (xAppend) xdata.push(nowD);
+  chartInst.setOption({ xAxis: { data: xdata }, series: upd });
+}
+function refreshLive(){
+  var assets = liveAssets();
+  if (!assets.length) return;
+  fetch('/mytrack/' + KEY + '/live?assets=' + encodeURIComponent(assets.join(',')), {cache: 'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      var q = j.quotes || {};
+      var eq = computeEq(q);
+      renderOpenBox(q, eq);
+      updateChartLive(q, eq);
+    })
+    .catch(function(){});
 }
 function msg(t, c){ var el = document.getElementById('save-msg'); if (el){ el.textContent = t; el.style.color = c; } }
 
 function drawChart(){
   var series = [
-    { name: '我的实盘', type: 'line', data: DATA.nav, showSymbol: false,
+    { id: 'mine', name: '我的实盘', type: 'line', data: DATA.nav, showSymbol: false,
       lineStyle: { color: '#e94560', width: 2 }, itemStyle: { color: '#e94560' } },
-    { name: '买点', type: 'scatter', symbol: 'triangle', symbolSize: 11,
+    { id: 'buys', name: '买点', type: 'scatter', symbol: 'triangle', symbolSize: 11,
       itemStyle: { color: '#4caf50' },
       data: DATA.marks.filter(function(m){ return m.kind === 'buy'; }).map(function(m){ return [m.date, m.nav]; }) },
-    { name: '卖点', type: 'scatter', symbol: 'triangle', symbolRotate: 180, symbolSize: 11,
+    { id: 'sells', name: '卖点', type: 'scatter', symbol: 'triangle', symbolRotate: 180, symbolSize: 11,
       itemStyle: { color: '#f44336' },
       data: DATA.marks.filter(function(m){ return m.kind === 'sell'; }).map(function(m){ return [m.date, m.nav]; }) }
   ];
@@ -168,26 +391,42 @@ function drawChart(){
   if (DATA.strat){
     // 策略日期与我的一致则直接并列, 否则按日期对齐
     var same = DATA.strat.dates.length === DATA.dates.length;
-    series.push({ name: '策略', type: 'line', showSymbol: false,
+    series.push({ id: 'strat', name: '策略(实时)', type: 'line', showSymbol: false,
       lineStyle: { color: '#64b5f6', width: 2, type: 'dashed' }, itemStyle: { color: '#64b5f6' },
       data: same ? DATA.strat.nav : alignStrat() });
   }
   var IDX_COLORS = ['#ffb74d', '#4dd0e1', '#ba68c8', '#aed581'];
   (DATA.benchmarks || []).forEach(function(b, i){
-    series.push({ name: b.name, type: 'line', showSymbol: false,
+    series.push({ id: 'idx_' + b.name, name: b.name, type: 'line', showSymbol: false,
       lineStyle: { color: IDX_COLORS[i % IDX_COLORS.length], width: 1.4 },
       itemStyle: { color: IDX_COLORS[i % IDX_COLORS.length] },
       data: b.nav });
+  });
+  var COMBO_COLORS = ['#f06292', '#26a69a', '#7e57c2', '#d4e157', '#ef6c00',
+                      '#5c6bc0', '#00acc1', '#9ccc65', '#ec407a', '#8d6e63'];
+  (DATA.combos || []).forEach(function(c, i){
+    var idx = {}; c.dates.forEach(function(d, j){ idx[d] = c.nav[j]; });
+    series.push({ id: 'combo_' + i, name: c.name, type: 'line', showSymbol: false,
+      lineStyle: { color: COMBO_COLORS[i % COMBO_COLORS.length], width: 1.6, type: 'dotted' },
+      itemStyle: { color: COMBO_COLORS[i % COMBO_COLORS.length] },
+      data: DATA.dates.map(function(d){ return idx[d] === undefined ? null : idx[d]; }) });
   });
   function alignStrat(){
     var idx = {}; DATA.strat.dates.forEach(function(d, i){ idx[d] = DATA.strat.nav[i]; });
     return DATA.dates.map(function(d){ return idx[d] === undefined ? null : idx[d]; });
   }
+  // 默认只显示: 我的实盘 / 策略(实时) / 上证指数 / 创业板指数, 其余在图例手动开
+  var sel = {};
+  series.forEach(function(s){ sel[s.name] = false; });
+  ['我的实盘', '策略(实时)', '上证指数', '创业板指数'].forEach(function(n){
+    if (sel.hasOwnProperty(n)) sel[n] = true;
+  });
   var c = echarts.init(document.getElementById('nav-chart'));
+  chartInst = c;
   c.setOption({
     backgroundColor: 'transparent', animation: false,
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,24,36,.95)', borderColor: '#2a3142', textStyle: { color: '#e8eaf0' } },
-    legend: { top: 0, textStyle: { color: '#8b92a8' } },
+    legend: { top: 0, textStyle: { color: '#8b92a8' }, selected: sel },
     grid: { left: 52, right: 24, top: 34, bottom: 60 },
     xAxis: { type: 'category', data: xdata, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#8b92a8' } },
     yAxis: { type: 'value', name: '净值', splitLine: { lineStyle: { color: 'rgba(42,49,66,.6)' } }, axisLabel: { color: '#8b92a8' }, scale: true },
@@ -198,6 +437,11 @@ function drawChart(){
   window.addEventListener('resize', function(){ c.resize(); });
 }
 renderMain();
+// 持仓分钟级实时刷新（60s 轮询，收盘后腾讯返回最后收盘价）
+if (!DATA.empty && DATA.mine && liveAssets().length){
+  refreshLive();
+  setInterval(refreshLive, 60000);
+}
 </script>
 </body>
 </html>

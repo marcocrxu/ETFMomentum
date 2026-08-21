@@ -253,6 +253,10 @@ function renderCharts(data) {
   ChartRenderers.renderYearlyChart(yearlyChart, data);
   ChartRenderers.renderPositionChart(posChart, data);
 
+  // 窗口 ≤2 年时标题同步改为月度收益
+  const yt = document.getElementById('yearly-title');
+  if (yt) yt.textContent = ((data.dates || []).length <= 504) ? '📅 月度收益' : '📅 年度收益';
+
   // 按开关状态设置四图联动/独立缩放
   const linked = document.getElementById('link-zoom').checked;
   ChartRenderers.setChartsLinked([navChart, ddChart, yearlyChart, posChart], linked);

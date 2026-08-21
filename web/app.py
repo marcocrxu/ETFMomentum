@@ -2,10 +2,51 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template, abort, session
 from web.bt_runner import run_backtest
 
 app = Flask(__name__)
+
+try:
+    from web.config_local import SESSION_SECRET
+except ImportError:
+    import secrets
+    SESSION_SECRET = secrets.token_hex(32)
+app.secret_key = SESSION_SECRET
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = True  # 仅经 HTTPS 发送, 防 HTTP 明文嗅探
+
+@app.after_request
+def _security_headers(resp):
+    # 密钥在 URL 里, 禁止任何跨站 Referer 泄露
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["X-Frame-Options"] = "DENY"
+    return resp
+
+# ── http 通道已禁用: 一律 403 (nginx 层还会直接断连; 此处在应用层兜底) ──
+@app.before_request
+def _force_https():
+    if request.headers.get("X-Forwarded-Proto") == "http":
+        return ("<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                "<title>🚫 HTTP 已禁用</title></head><body style='font-family:sans-serif;padding:40px'>"
+                "<h2>🚫 HTTP 通道已禁用</h2>"
+                "<p>请使用 <b>https://8.219.57.219</b> 访问。</p></body></html>", 403)
+
+# ── 全站门禁: 必须先访问 /mytrack/<正确密钥> 解锁, 其他页面/API 才可访问 ──
+@app.before_request
+def _gate():
+    p = request.path
+    if p.startswith("/mytrack/") or p.startswith("/static/") or p == "/favicon.ico":
+        return None  # mytrack 本身靠路径密钥保护; /static 是 mytrack 页面的资源
+    if session.get("authed"):
+        return None
+    app.logger.warning("gate 403: ip=%s path=%s", request.headers.get("X-Forwarded-For") or request.remote_addr, p)
+    return ("<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<title>🔒 需要解锁</title></head><body style='font-family:sans-serif;padding:40px'>"
+            "<h2>🔒 需要先访问私密对账页</h2>"
+            "<p>请用 <b>https://8.219.57.219</b> 打开私密对账页（mytrack 地址）解锁一次，"
+            "再访问本页面；http 地址会因安全策略始终无法解锁。</p></body></html>", 403)
 
 @app.route("/")
 def index():
@@ -128,6 +169,7 @@ def _check_key(key):
     from web.config_local import MYTRACK_KEY
     if key != MYTRACK_KEY:
         abort(404)
+    session["authed"] = True   # 正确密钥 → 种下解锁 cookie
 
 @app.route("/mytrack/<key>")
 def mytrack(key):
@@ -149,6 +191,26 @@ def mytrack_save(key):
         return jsonify({"success": False, "error": err}), 400
     save_records(records, body.get("initial_cash"))
     return jsonify({"success": True})
+
+
+@app.route("/mytrack/<key>/combos/save", methods=["POST"])
+def mytrack_combos_save(key):
+    _check_key(key)
+    from web.mytrack import validate_combos, save_combos
+    body = request.get_json(silent=True) or {}
+    err, combos = validate_combos(body.get("combos", []))
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    save_combos(combos)
+    return jsonify({"success": True})
+
+
+@app.route("/mytrack/<key>/live", methods=["GET"])
+def mytrack_live(key):
+    _check_key(key)
+    from web.mytrack import live_quotes
+    assets = [a for a in request.args.get("assets", "").split(",") if a]
+    return jsonify({"quotes": live_quotes(assets)})
 
 
 if __name__ == "__main__":

@@ -20,3 +20,5 @@ web/leaderboard_last.json
 # 打榜自定义提交 (自然语言生成代码与队列)
 web/lb_queue.json
 lb_custom/
+web/mytrack_combos.json
+web/app.log

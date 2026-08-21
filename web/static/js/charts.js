@@ -199,9 +199,12 @@ function renderDrawdownChart(chart, data) {
 }
 
 function renderYearlyChart(chart, data) {
-  const yearly = data.yearly || {};
-  const years = Object.keys(yearly).sort();
-  const values = years.map(y => yearly[y]);
+  // 回测窗口 ≤2 年时年化无意义 → 改画月度收益
+  const useMonthly = (data.dates || []).length <= 504;
+  const src = useMonthly ? (data.monthly || {}) : (data.yearly || {});
+  const keys = Object.keys(src).sort();
+  const values = keys.map(k => src[k]);
+  const barName = useMonthly ? '月度收益' : '年度收益';
 
   const option = {
     ...getCommonOption(),
@@ -216,11 +219,12 @@ function renderYearlyChart(chart, data) {
         return `${p[0].axisValue}<br/>收益: ${v >= 0 ? '+' : ''}${v}%`;
       }
     },
-    xAxis: { ...getCommonOption().xAxis, data: years, axisLabel: { rotate: 0 } },
+    xAxis: { ...getCommonOption().xAxis, data: keys,
+             axisLabel: { rotate: (useMonthly && keys.length > 12) ? 30 : 0 } },
     yAxis: { ...getCommonOption().yAxis, axisLabel: { formatter: '{value}%' } },
     dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 8, borderColor: '#2a3142', fillerColor: 'rgba(233,69,96,.2)' }],
     series: [{
-      name: '年度收益',
+      name: barName,
       type: 'bar',
       data: values,
       itemStyle: {

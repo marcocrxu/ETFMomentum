@@ -1,7 +1,17 @@
 """回测引擎 — 供 web/app.py 和 stock-bot/app.py 共用"""
-import numpy as np, pandas as pd, io, base64, datetime as _dt
+import numpy as np, pandas as pd, io, base64, datetime as _dt, threading
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt; import matplotlib.ticker as mticker
+
+# matplotlib 的 ft2font C 扩展非线程安全: 多请求并发画图会 segfault 杀掉整个进程
+# (2026-08-21 真实事故: 10年回测时 python3 死在 ft2font.cpython-36m-x86_64-linux-gnu.so)
+# 1) 全局锁串行化一切 pyplot 操作; 2) import 时(单线程)预热字体缓存, 消除并发初始化竞态
+_MPL_LOCK = threading.Lock()
+try:
+    import matplotlib.font_manager as _fm
+    _fm._load_fontmanager(try_read_cache=False)
+except Exception:
+    pass
 
 from strategy.signal import (SignalConfig, compute_signals,
                              calc_accel_thresholds, calc_mom60,
@@ -19,7 +29,8 @@ FEED = TushareFeed(TUSHARE_TOKEN,
 
 ALL_CODES = {
     "纳指":"513100.SH","黄金":"518880.SH","创业":"159915.SZ",
-    "科创50":"588080.SH",  # 易方达科创50 (与 yanyan 池一致)"沪深300":"510300.SH","上证50":"510050.SH",
+    "科创50":"588080.SH",  # 易方达科创50 (与 yanyan 池一致)
+    "沪深300":"510300.SH","上证50":"510050.SH",
     "中证2000":"563300.SH","港股创新药":"513120.SH","有色":"512400.SH",
     "通信":"515880.SH","半导体":"512480.SH","红利低波":"512890.SH",
     "5年国债":"511010.SH",
@@ -441,19 +452,20 @@ def run_backtest(params):
         if "卖出" in d["action"] or "→" in d["action"]: break
 
     # Chart
-    plt.figure(figsize=(14, 6))
-    plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei", "SimHei"]
-    plt.rcParams["axes.unicode_minus"] = False; plt.style.use("dark_background")
-    nav_plot = np.array(user_nav)
-    if len(nav_plot) > 0 and len(all_dates) >= len(nav_plot):
-        plt.plot(all_dates[-len(nav_plot):], nav_plot, color="#e94560", linewidth=1.2)
-    plt.axhline(y=1.0, color="gray", linestyle="--", alpha=0.3)
-    plt.title("ETF Momentum Rotation NAV", fontsize=14)
-    plt.ylabel("NAV"); plt.grid(True, alpha=0.2)
-    plt.gca().yaxis.set_major_formatter(mticker.FormatStrFormatter("%.1f"))
-    buf = io.BytesIO(); plt.savefig(buf, format="png", dpi=120, bbox_inches="tight")
-    plt.close(); buf.seek(0)
-    chart_b64 = base64.b64encode(buf.read()).decode()
+    with _MPL_LOCK:
+        plt.figure(figsize=(14, 6))
+        plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei", "SimHei"]
+        plt.rcParams["axes.unicode_minus"] = False; plt.style.use("dark_background")
+        nav_plot = np.array(user_nav)
+        if len(nav_plot) > 0 and len(all_dates) >= len(nav_plot):
+            plt.plot(all_dates[-len(nav_plot):], nav_plot, color="#e94560", linewidth=1.2)
+        plt.axhline(y=1.0, color="gray", linestyle="--", alpha=0.3)
+        plt.title("ETF Momentum Rotation NAV", fontsize=14)
+        plt.ylabel("NAV"); plt.grid(True, alpha=0.2)
+        plt.gca().yaxis.set_major_formatter(mticker.FormatStrFormatter("%.1f"))
+        buf = io.BytesIO(); plt.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+        plt.close(); buf.seek(0)
+        chart_b64 = base64.b64encode(buf.read()).decode()
 
     # 自检
     checks = []

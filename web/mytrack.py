@@ -17,7 +17,88 @@ from web.config_local import TUSHARE_TOKEN, MYTRACK_KEY  # noqa: F401  (key 在 
 from web.bt_runner import ALL_CODES, run_backtest
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mytrack_data.json")
+COMBOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mytrack_combos.json")
 FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum")
+
+# ── 策略组合对比（可调标的池/参数，随对账页一起画图）────────────────────
+DEFAULT_COMBOS = [
+    {"name": "从策略(纯QQQ)", "universe": ["纳指", "黄金", "创业"],
+     "params": {"nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0}},
+    {"name": "+科创50", "universe": ["纳指", "黄金", "创业", "科创50"], "params": {}},
+    {"name": "黄金+纳指", "universe": ["黄金", "纳指"], "params": {}},
+]
+
+# 组合可调参数的校验规则（白名单）
+COMBO_PARAM_RULES = {
+    "sh_cash": bool, "mom_period": int, "nz_mom_qqq_on": bool,
+    "nz_mom_qqq_w": float, "accel_cooldown": int, "accel_cooldown_gold_only": bool,
+    "stop_loss": float, "stop_sigma": float, "stop_sigma_floor": bool,
+    "min_hold": int, "min_gap": float, "exception_gap": float,
+    "confirm_days": int, "sh_cash_cooldown": int,
+}
+
+
+def load_combos():
+    """组合定义列表（无文件时给默认）"""
+    if not os.path.exists(COMBOS_FILE):
+        return {"combos": [dict(c) for c in DEFAULT_COMBOS]}
+    try:
+        with open(COMBOS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"combos": [dict(c) for c in DEFAULT_COMBOS]}
+
+
+def validate_combos(combos):
+    """返回 (err, cleaned)。err 为 None 表示通过"""
+    all_codes = set(ALL_CODES.keys())
+    if not isinstance(combos, list) or not (1 <= len(combos) <= 10):
+        return "组合数量需为 1~10 个", None
+    clean = []
+    for c in combos:
+        if not isinstance(c, dict):
+            return "组合格式错误", None
+        name = str(c.get("name", "")).strip()[:20]
+        uni = c.get("universe") or []
+        if not name:
+            return "组合名不能为空", None
+        if not isinstance(uni, list) or not (2 <= len(uni) <= 8):
+            return "组合「%s」标的需 2~8 个" % name, None
+        bad = [u for u in uni if u not in all_codes]
+        if bad:
+            return "组合「%s」含未知标的: %s" % (name, bad), None
+        params = {}
+        for k, v in (c.get("params") or {}).items():
+            if k not in COMBO_PARAM_RULES:
+                continue
+            try:
+                typ = COMBO_PARAM_RULES[k]
+                if typ is bool:
+                    params[k] = v if isinstance(v, bool) else bool(v)
+                elif typ is int:
+                    params[k] = int(v)
+                else:
+                    params[k] = float(v)
+            except Exception:
+                continue
+        # QQQ 权重限制在 [0,1]（0=纯ETF, 0.7=主策略口径, 1=纯QQQ）
+        if "nz_mom_qqq_w" in params:
+            params["nz_mom_qqq_w"] = round(min(max(params["nz_mom_qqq_w"], 0.0), 1.0), 2)
+        # 冷却天数限制 0~10
+        if "accel_cooldown" in params:
+            params["accel_cooldown"] = min(max(params["accel_cooldown"], 0), 10)
+        # 动量周期限制 10~60
+        if "mom_period" in params:
+            params["mom_period"] = min(max(params["mom_period"], 10), 60)
+        clean.append({"name": name, "universe": list(uni), "params": params})
+    return None, clean
+
+
+def save_combos(combos):
+    tmp = COMBOS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"combos": combos}, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, COMBOS_FILE)
 
 
 def load_records():
@@ -194,6 +275,113 @@ def _metrics(nav):
             "mdd": round(mdd, 2)}
 
 
+# ── 策略对账基准的时间线 ────────────────────────────────────────────────
+# ── 策略对账基准 ────────────────────────────────────────────────────────
+# 用户决议 (2026-08-20): 对账基准 = 当前默认口径的策略（策略调整过就按调整过的来），
+# 不做"当时规则"的点时间回放——避免自欺欺人。默认值变化直接反映到整条曲线。
+
+
+def strat_run(start_date, end_date, universe="纳指,黄金,创业", extra=None):
+    """策略回放（当前默认口径; 组合对比可加 extra 参数覆盖）。
+    返回 (dates, nav) 或 (None, None)；strat_run.last_pos 记录期末持仓（实时尾部用）。"""
+    bt = run_backtest({"universe": universe,
+                       "start_date": start_date, "end_date": end_date,
+                       **(extra or {})})
+    if "error" in bt or not bt.get("nav"):
+        return None, None
+    pos = None
+    try:
+        pl = bt.get("position_labels", [])
+        ps = bt.get("position_series", [])
+        if ps and len(ps) == len(bt["dates"]):
+            idx = int(ps[-1])
+            # position_series: -1=空仓, 0..n-1 对应 position_labels[1:]
+            if 0 <= idx < len(pl) - 1:
+                pos = pl[idx + 1]
+    except Exception:
+        pos = None
+    strat_run.last_pos = pos
+    return list(bt["dates"]), [float(v) for v in bt["nav"]]
+
+
+strat_run.last_pos = None
+
+
+# 基准指数 → 腾讯行情代码（对账页指数曲线尾部实时用; 科创50 基准用同名 ETF 近似）
+IDX_TENCENT = {"上证指数": "s_sh000001", "创业板指数": "s_sz399006",
+               "深证成指": "s_sz399001"}
+
+# 外盘/外汇（对账页实时展示用）
+SPECIAL_TENCENT = {"QQQ": "usQQQ", "USDCNY": "whUSDCNY"}
+
+
+def live_quotes(assets):
+    """腾讯实时行情: {asset: {price, prev_close, pct, time}}。分钟级刷新用。
+    asset 可以是标的池名称(ALL_CODES)、基准指数名称、或 QQQ/USDCNY。"""
+    tags = []
+    for a in assets:
+        code = ALL_CODES.get(a)
+        if code:
+            code = code.split(".")[0]             # 去掉 .SH/.SZ 后缀
+            ex = "sh" if code[0] in "569" else "sz"
+            tags.append(("s_%s%s" % (ex, code), a))
+        elif a in IDX_TENCENT:
+            tags.append((IDX_TENCENT[a], a))
+        elif a in SPECIAL_TENCENT:
+            tags.append((SPECIAL_TENCENT[a], a))
+    if not tags:
+        return {}
+    try:
+        import requests
+        url = "https://qt.gtimg.cn/q=" + ",".join(t for t, _ in tags)
+        resp = requests.get(url, timeout=5)
+        resp.encoding = "gbk"
+        raw = resp.text
+    except Exception:
+        return {}
+    tag_to_asset = dict(tags)
+    now_str = _dt.datetime.now().strftime("%H:%M:%S")
+    out = {}
+    for line in raw.strip().split("\n"):
+        if "=" not in line or "~" not in line:
+            continue
+        tag = line.split("=", 1)[0].strip().replace("v_", "")
+        asset = tag_to_asset.get(tag)
+        if not asset:
+            continue
+        parts = line.split("=", 1)[1].strip().strip('";').split("~")
+        if len(parts) < 6:
+            continue
+        try:
+            if tag == "usQQQ":
+                # 美股: 3现价 4昨收 30时间 32涨跌幅%
+                price = float(parts[3])
+                prev = float(parts[4])
+                pct = float(parts[32]) if len(parts) > 32 else 0.0
+                t = parts[30] if len(parts) > 30 else now_str
+            elif tag == "whUSDCNY":
+                # 外汇: 3现价 5时间(YYYYMMDDHHMMSS) 6昨收 12涨跌额 13涨跌幅%
+                price = float(parts[3])
+                prev = float(parts[6])
+                pct = float(parts[13]) if len(parts) > 13 else 0.0
+                t = parts[5] if len(parts) > 5 else now_str
+                if len(t) == 14:
+                    t = "%s-%s-%s %s:%s:%s" % (t[:4], t[4:6], t[6:8], t[8:10], t[10:12], t[12:14])
+            else:
+                # A股/ETF 精简格式: 3现价 4涨跌额 5涨跌幅%
+                price = float(parts[3])
+                prev = round(price - float(parts[4]), 4)
+                pct = float(parts[5])
+                t = now_str
+        except Exception:
+            continue
+        if price <= 0:
+            continue
+        out[asset] = {"price": price, "prev_close": prev,
+                      "pct": round(pct, 2), "time": t}
+    return out
+
+
 def compute_track():
     """页面全量数据: 我的净值 / 策略净值 / 逐笔(FIFO lot)对账 / 当前持仓 / 汇总"""
     records = _norm(load_records())
@@ -239,18 +427,17 @@ def compute_track():
         last_close = cmaps[a].get(last_dt)
         if last_close:
             open_pos.append({"asset": a, "avg_cost": round(cost / h["units"], 3),
-                             "last": last_close,
+                             "last": last_close, "units": h["units"],
+                             "cost": round(cost, 2),
                              "float_ret": round((h["units"] * last_close / cost - 1) * 100, 2),
                              "weight": round(h["units"] * last_close / st["daily"][-1][1] * 100, 1)})
 
-    # ── 策略同窗口对比 ──
-    bt = run_backtest({"universe": "纳指,黄金,创业", "start_date": dates[0], "end_date": dates[-1]})
+    # ── 策略同窗口对比（当前默认口径, 用户决议 2026-08-20）──────────────
+    s_dates, s_norm = strat_run(dates[0], dates[-1])
     strat = None
-    if "error" not in bt:
-        s_dates, s_nav = bt["dates"], bt["nav"]
-        base = s_nav[0]
-        s_norm = [v / base for v in s_nav]
+    if s_dates is not None:
         strat = {"dates": s_dates, "nav": [round(v, 4) for v in s_norm],
+                 "position": strat_run.last_pos,
                  **_metrics(s_norm)}
         s_idx = {d: i for i, d in enumerate(s_dates)}
         for t in trades:
@@ -280,6 +467,23 @@ def compute_track():
     except Exception:
         pass  # 指数数据不可用时宁可不画基准线, 不让整页挂掉
 
+    # ── 策略组合对比（可调标的池/参数）──────────────────────────────────
+    combo_defs = load_combos().get("combos", [])
+    combos = []
+    for c in combo_defs:
+        try:
+            cd, cn = strat_run(dates[0], dates[-1],
+                                         ",".join(c.get("universe") or []),
+                                         c.get("params") or {})
+        except Exception:
+            cd = None
+        if cd:
+            combos.append({"name": c.get("name", ""),
+                           "universe": ",".join(c.get("universe") or []),
+                           "dates": cd, "nav": [round(v, 4) for v in cn],
+                           "position": strat_run.last_pos,
+                           **_metrics(cn)})
+
     wins = [t for t in trades if t["ret"] > 0]
     return {
         "empty": False,
@@ -293,5 +497,7 @@ def compute_track():
                  "initial_cash": load_book().get("initial_cash")},
         "strat": strat,
         "benchmarks": benchmarks,
+        "combos": combos,
+        "combo_defs": combo_defs,
         "assets": sorted(ALL_CODES.keys()),
     }
