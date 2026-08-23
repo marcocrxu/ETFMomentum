@@ -316,14 +316,16 @@ function renderTrades(data) {
   const tbody = document.getElementById('trades-body');
   const decisions = (data.decisions || []).slice();
   lastTradeDecisions = data.decisions || [];
+  const countEl = document.getElementById('trades-count');
+  if (countEl) countEl.textContent = '共 ' + decisions.length + ' 笔';
   if (decisions.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#8b92a8;padding:24px">暂无决策记录</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#8b92a8;padding:24px">暂无决策记录</td></tr>`;
     return;
   }
 
   decisions.sort((a, b) => cmpTrades(a, b, tradeSort.key, tradeSort.dir));
 
-  tbody.innerHTML = decisions.map(d => {
+  tbody.innerHTML = decisions.map((d, i) => {
     const pnlClass = (d.pnl || 0) >= 0 ? 'positive' : 'negative';
     const pnlText = d.pnl != null ? `${d.pnl >= 0 ? '+' : ''}${d.pnl}%` : '-';
     const isCrash = d.reason === '恐慌抄底';
@@ -334,6 +336,7 @@ function renderTrades(data) {
       : '';
     return `
       <tr style="${rowBg}">
+        <td>${i + 1}</td>
         <td>${d.date || '-'}</td>
         <td>${d.action || '-'} ${crashBadge}</td>
         <td>${d.price != null ? d.price.toFixed(3) : '-'}</td>

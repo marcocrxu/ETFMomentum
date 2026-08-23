@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ETF 动量轮动策略回测</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='20260821c') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='20260821d') }}">
 </head>
 <body>
   <div class="page-wrapper">
@@ -342,11 +342,12 @@
     </section>
 
     <section class="card table-card" id="table-card" style="display:none">
-      <div class="card-header"><h2>📋 决策记录 <span style="font-size:12px;color:#8b92a8;font-weight:400">点击列头排序 · 再点切换升/降序</span></h2></div>
+      <div class="card-header"><h2>📋 决策记录 <span id="trades-count" style="font-size:12px;color:#8b92a8;font-weight:400"></span> <span style="font-size:12px;color:#8b92a8;font-weight:400">点击列头排序 · 再点切换升/降序</span></h2></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th>序号</th>
               <th data-sort="date" class="th-sort">日期 <span class="sort-ind">↕</span></th>
               <th data-sort="action" class="th-sort">决策 <span class="sort-ind">↕</span></th>
               <th data-sort="price" class="th-sort">成交价 <span class="sort-ind">↕</span></th>
@@ -373,6 +374,6 @@
 
   <script src="{{ url_for('static', filename='lib/echarts.min.js', v='20260821') }}"></script>
   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20260821c') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20260821d') }}"></script>
 </body>
 </html>
