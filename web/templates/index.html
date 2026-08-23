@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ETF 动量轮动策略回测</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='20260821d') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='20260823') }}">
 </head>
 <body>
   <div class="page-wrapper">
@@ -49,6 +49,11 @@
         <div class="param-group">
           <label class="group-label">空仓冷却天</label>
           <input id="sh_cash_cooldown" type="number" value="3" min="0" max="60">
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="入场乖离门: 候选现价高于其20日均线超过X%时不买 (0=关闭; 研究候选5.0, 躲深亏追高腿)">入场乖离门%</label>
+          <input id="entry_bias_cap" type="number" value="0" min="0" step="0.5">
         </div>
 
         <div class="param-group">
@@ -374,6 +379,6 @@
 
   <script src="{{ url_for('static', filename='lib/echarts.min.js', v='20260821') }}"></script>
   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20260821d') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20260823') }}"></script>
 </body>
 </html>

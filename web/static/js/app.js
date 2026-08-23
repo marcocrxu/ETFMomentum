@@ -113,6 +113,7 @@ function collectParams() {
     accel_cooldown_gold_only: document.getElementById('accel_cooldown_gold_only').checked,
     stop_cooldown: +document.getElementById('stop_cooldown').value || 0,
     sh_cash_cooldown: +document.getElementById('sh_cash_cooldown').value || 0,
+    entry_bias_cap: +document.getElementById('entry_bias_cap').value || 0,
     multi_mom_on: document.getElementById('multi_mom_on').checked,
     fip_on: document.getElementById('fip_on').checked,
     top_k: +document.getElementById('top_k').value || 1,
@@ -426,6 +427,7 @@ function applyConfig(cfg) {
   setChecked('accel_cooldown_gold_only', cfg.accel_cooldown_gold_only);
   setVal('stop_cooldown', cfg.stop_cooldown);
   setVal('sh_cash_cooldown', cfg.sh_cash_cooldown);
+  setVal('entry_bias_cap', cfg.entry_bias_cap);
   setVal('top_k', cfg.top_k);
   setVal('mom_skip', cfg.mom_skip);
   setVal('vix_gate', cfg.vix_gate);
