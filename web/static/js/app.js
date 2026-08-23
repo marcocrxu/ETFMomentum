@@ -263,7 +263,7 @@ function renderCharts(data) {
 }
 
 // ── 决策记录多维度排序 ──
-let tradeSort = { key: 'date', dir: 1 };   // 默认日期升序(时间顺序), 点列头切换
+let tradeSort = { key: 'date', dir: -1 };   // 默认日期降序(最近操作在最前), 点列头切换
 let lastTradeDecisions = [];
 
 const TRADE_SORT_KEYS = {
