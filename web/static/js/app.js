@@ -262,13 +262,66 @@ function renderCharts(data) {
   ChartRenderers.setChartsLinked([navChart, ddChart, yearlyChart, posChart], linked);
 }
 
+// ── 决策记录多维度排序 ──
+let tradeSort = { key: 'date', dir: 1 };   // 默认日期升序(时间顺序), 点列头切换
+let lastTradeDecisions = [];
+
+const TRADE_SORT_KEYS = {
+  date:   d => d.date || '',
+  action: d => d.action || '',
+  price:  d => (d.price != null ? d.price : null),
+  pnl:    d => (d.pnl != null ? d.pnl : null),
+  nav:    d => (d.nav != null ? d.nav : null),
+  days:   d => (d.days != null ? d.days : null),
+  reason: d => d.reason || '',
+};
+
+function cmpTrades(a, b, key, dir) {
+  const va = TRADE_SORT_KEYS[key](a), vb = TRADE_SORT_KEYS[key](b);
+  const na = va == null, nb = vb == null;
+  if (na && nb) return 0;
+  if (na) return 1;          // 空值永远排最后
+  if (nb) return -1;
+  if (va < vb) return -dir;
+  if (va > vb) return dir;
+  const da = a.date || '', db = b.date || '';
+  return da < db ? -1 : da > db ? 1 : 0;   // 同值按日期升序稳定
+}
+
+function bindTradeSort() {
+  const thead = document.querySelector('#table-card thead');
+  if (!thead) return;
+  const setInd = () => {
+    thead.querySelectorAll('th[data-sort] .sort-ind').forEach(s => s.textContent = '↕');
+    const th = thead.querySelector('th[data-sort="' + tradeSort.key + '"]');
+    if (th) th.querySelector('.sort-ind').textContent = tradeSort.dir === 1 ? '▲' : '▼';
+  };
+  thead.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-sort');
+      if (tradeSort.key === key) {
+        tradeSort.dir *= -1;
+      } else {
+        tradeSort.key = key;
+        tradeSort.dir = 1;   // 换新列默认升序
+      }
+      setInd();
+      renderTrades({ decisions: lastTradeDecisions });
+    });
+  });
+  setInd();
+}
+
 function renderTrades(data) {
   const tbody = document.getElementById('trades-body');
-  const decisions = data.decisions || [];
+  const decisions = (data.decisions || []).slice();
+  lastTradeDecisions = data.decisions || [];
   if (decisions.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#8b92a8;padding:24px">暂无决策记录</td></tr>`;
     return;
   }
+
+  decisions.sort((a, b) => cmpTrades(a, b, tradeSort.key, tradeSort.dir));
 
   tbody.innerHTML = decisions.map(d => {
     const pnlClass = (d.pnl || 0) >= 0 ? 'positive' : 'negative';
@@ -395,6 +448,7 @@ function applyConfig(cfg) {
 document.addEventListener('DOMContentLoaded', () => {
   initETFChips();
   bindEvents();
+  bindTradeSort();
   // 默认结束日期为今天
   document.getElementById('end_date').value = formatDate(new Date());
   runBacktest();

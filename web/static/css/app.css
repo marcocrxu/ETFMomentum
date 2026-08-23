@@ -449,6 +449,23 @@ th {
   text-align: right;
 }
 
+th.th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.th-sort:hover {
+  color: var(--accent, #e94560);
+}
+
+th.th-sort .sort-ind {
+  font-size: 10px;
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+
 td:first-child, th:first-child {
   text-align: left;
 }
