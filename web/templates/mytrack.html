@@ -277,10 +277,18 @@ function renderOpenBox(q, eq){
   box.innerHTML = '📌 当前持仓 <span style="color:var(--muted);font-weight:400">（实时 · 分钟级 · ' + (t0 || '—') + '）</span>：'
     + rows.map(function(r){
         var w = eq > 0 ? (r.val / eq * 100).toFixed(1) : '0.0';
+        var v = (q.vol20 || {})[r.o.asset];
         return '<b>' + esc(r.o.asset) + '</b>（成本 ' + r.o.avg_cost + ' · 现价 ' + r.p
-          + ' · 仓位 ' + w + '% · 浮盈 ' + fmtPct(r.ret) + '）';
+          + ' · 仓位 ' + w + '% · 浮盈 ' + fmtPct(r.ret)
+          + ' · σ20 ' + (v ? v.vol20 + '%' : '—') + '）';
       }).join('　')
-    + '　<span id="fx-line" style="color:var(--muted)"></span>';
+    + '　<span id="fx-line" style="color:var(--muted)"></span>'
+    + '<div style="color:var(--muted);margin-top:6px;font-size:12px">σ20(日%, 括号=3σ止损线/年化)：'
+    + liveAssets().map(function(a){
+        var v = (q.vol20 || {})[a];
+        return v ? esc(a) + ' ' + v.vol20 + '%(线' + v.stop + '%/年' + v.ann + '%)' : '';
+      }).filter(Boolean).join(' · ')
+    + '</div>';
   var el = document.getElementById('mine-ret');
   if (el && DATA.mine.initial_cash){
     el.innerHTML = fmtPct((eq / DATA.mine.initial_cash - 1) * 100);

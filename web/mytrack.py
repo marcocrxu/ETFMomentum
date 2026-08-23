@@ -314,6 +314,54 @@ IDX_TENCENT = {"上证指数": "sh000001", "创业板指数": "sz399006",
 # 外盘/外汇（对账页实时展示用）
 SPECIAL_TENCENT = {"QQQ": "usQQQ", "USDCNY": "whUSDCNY"}
 
+# 指数 Tushare 代码 (σ20 计算用)
+IDX_CODES = {"上证指数": "000001.SH", "创业板指数": "399006.SZ",
+             "深证成指": "399001.SZ", "科创50": "000688.SH"}
+
+
+def _vol20_of_code(code):
+    """从缓存直接读某代码的 20 日波动率(日%, 复权价口径); 不触发 Tushare 拉取"""
+    try:
+        path = os.path.join(FEED.cache_dir, code.replace(".", "_") + ".csv")
+        df = pd.read_csv(path, usecols=["close", "adj_factor"])
+        adj = df["close"] * df["adj_factor"] / df["adj_factor"].iloc[-1]
+        c = adj.tail(21).values
+        if len(c) < 6:
+            return None
+        r = np.diff(c) / c[:-1]
+        return float(np.std(r) * 100)
+    except Exception:
+        return None
+
+
+def vol20s(assets):
+    """{asset: {vol20: 日%, ann: 年化%, stop: min(5%, 3σ) 止损线}} — 被选中的所有标的"""
+    out = {}
+    qq_csv = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "data", "qqq_usdcny.csv")
+    for a in assets:
+        try:
+            if a in ALL_CODES:
+                v = _vol20_of_code(ALL_CODES[a])
+            elif a in IDX_CODES:
+                v = _vol20_of_code(IDX_CODES[a])
+            elif a in ("QQQ", "USDCNY") and os.path.exists(qq_csv):
+                df = pd.read_csv(qq_csv, usecols=["QQQ", "USDCNY=X"]).tail(21)
+                col = "QQQ" if a == "QQQ" else "USDCNY=X"
+                c = df[col].values
+                r = np.diff(c) / c[:-1]
+                v = float(np.std(r) * 100) if len(c) > 1 else None
+            else:
+                continue
+            if v is None:
+                continue
+            out[a] = {"vol20": round(v, 3),
+                      "ann": round(v * np.sqrt(252), 1),
+                      "stop": round(min(5.0, 3 * v), 2)}
+        except Exception:
+            continue
+    return out
+
 
 def live_quotes(assets):
     """腾讯实时行情: {asset: {price, prev_close, pct, time}, trade_day: bool}。
@@ -391,6 +439,8 @@ def live_quotes(assets):
                       "pct": round(pct, 2), "time": t}
     # 任一 A 股标的的行情时间=今天 → 今天是已开盘的交易日
     out["trade_day"] = today_s in a_share_dates
+    # 所有被选中标的的 σ20 (供页面显示; 本地缓存计算, 无外部请求)
+    out["vol20"] = vol20s(list(out.keys()))
     return out
 
 
