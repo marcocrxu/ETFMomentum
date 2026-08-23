@@ -369,6 +369,8 @@
         <tbody><tr><td><b>创业</b></td><td>63</td><td>28.0%</td><td>10.9</td><td>7</td><td>72</td><td>3.60%</td><td>1.15%</td><td class='num-pos'>+226.6pp</td><td>+56.0%</td><td>57.1%</td><td>4/23/17/9/10</td><td>24/19/11/8/1</td></tr><tr><td><b>纳指</b></td><td>62</td><td>36.2%</td><td>14.4</td><td>6</td><td>85</td><td>2.47%</td><td>1.88%</td><td class='num-pos'>+152.8pp</td><td>+37.8%</td><td>64.5%</td><td>4/18/24/11/5</td><td>28/6/15/8/5</td></tr><tr><td><b>黄金</b></td><td>54</td><td>19.8%</td><td>9.0</td><td>6</td><td>42</td><td>0.46%</td><td>0.43%</td><td class='num-pos'>+24.9pp</td><td>+6.2%</td><td>50.0%</td><td>2/25/21/5/1</td><td>26/14/8/5/1</td></tr></tbody>
       </table>
       <p class="small"><b>口径：</b>每段持仓 = 买入/切换入 → 卖出/切换出/期末持有的完整腿；收益为段内净值盈亏(含手续费)，期末持仓段计入；收益贡献 = 各段盈亏(pp)之和，贡献占比 = 该标的总盈亏 / 全池总盈亏；时间占比 = 该标的持有交易日 / 全样本交易日。</p>
+      <div id="hold-days-chart" style="height:300px;margin-top:10px"></div>
+      <div id="hold-pnl-chart" style="height:300px;margin-top:6px"></div>
     </div>
   </div>
 
@@ -456,6 +458,12 @@ const MOM_P = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 2
 const MOM_ANN = [12.37, 19.17, 24.28, 25.39, 29.31, 29.5, 28.12, 33.69, 32.69, 38.31, 45.51, 43.2, 40.22, 38.81, 35.91, 26.84, 31.27, 31.89, 32.58, 26.9, 26.57];
 const MOM_CAL = [0.34, 0.71, 0.83, 0.86, 1.17, 1.26, 1.06, 1.36, 1.52, 2.13, 2.52, 2.38, 2.27, 2.14, 1.43, 0.98, 1.18, 1.27, 1.52, 1.06, 1.05];
 const MOM_DD = [-35.93, -27.07, -29.25, -29.65, -24.97, -23.41, -26.59, -24.79, -21.47, -17.97, -18.08, -18.17, -17.69, -18.14, -25.14, -27.37, -26.43, -25.14, -21.47, -25.41, -25.41];
+const HA_ASSETS = ["\u521b\u4e1a", "\u7eb3\u6307", "\u9ec4\u91d1", "\u5408\u8ba1"];
+const HA_PNL = {"\u521b\u4e1a": [4, 11, 12, 8, 9, 9, 10], "\u7eb3\u6307": [4, 6, 12, 12, 12, 11, 5], "\u9ec4\u91d1": [2, 8, 17, 13, 8, 5, 1], "\u5408\u8ba1": [10, 25, 41, 33, 29, 25, 16]};
+const HA_DAYS = {"\u521b\u4e1a": [24, 19, 11, 8, 1], "\u7eb3\u6307": [28, 6, 15, 8, 5], "\u9ec4\u91d1": [26, 14, 8, 5, 1], "\u5408\u8ba1": [78, 39, 34, 21, 7]};
+const PNL_BINS = ["\u2264-5", "(-5,-2]", "(-2,0]", "(0,2]", "(2,5]", "(5,10]", ">10"];
+const DAYS_BINS = ["1-5", "6-10", "11-20", "21-40", "40+"];
+const HA_COLORS = {'创业':'#4caf50','纳指':'#42a5f5','黄金':'#facc15','合计':'#e94560'};
 (function(){
   var TIP = {backgroundColor:'rgba(20,24,36,.95)', borderColor:'#2a3142', textStyle:{color:'#e8eaf0'}};
   var AX = {axisLine:{lineStyle:{color:'#2a3142'}}, axisLabel:{color:'#8b92a8'}};
@@ -494,7 +502,29 @@ const MOM_DD = [-35.93, -27.07, -29.25, -29.65, -24.97, -23.41, -26.59, -24.79, 
       {name:'最大回撤%', type:'line', yAxisIndex:1, data:MOM_DD, showSymbol:false, lineStyle:{color:'#8b92a8',width:1}}
     ]
   });
-  window.addEventListener('resize', function(){ nc.resize(); mc.resize(); });
+  var hd = echarts.init(document.getElementById('hold-days-chart'));
+  hd.setOption({
+    backgroundColor:'transparent', animation:false,
+    title:{text:'持有天数分布（按标的，持仓段数）', left:'center', textStyle:{color:'#8b92a8', fontSize:13, fontWeight:400}},
+    tooltip:Object.assign({trigger:'axis'}, TIP),
+    legend:{top:24, textStyle:{color:'#8b92a8'}},
+    grid:{left:56,right:20,top:60,bottom:40},
+    xAxis:Object.assign({type:'category', data:DAYS_BINS, name:'持有天数'}, AX),
+    yAxis:Object.assign({type:'value', name:'持仓段数', minInterval:1, splitLine:{lineStyle:{color:'rgba(42,49,66,.6)'}}}, AX),
+    series: HA_ASSETS.map(function(a){return {name:a, type:'bar', data:HA_DAYS[a], itemStyle:{color:HA_COLORS[a]}, barMaxWidth:26};})
+  });
+  var hp = echarts.init(document.getElementById('hold-pnl-chart'));
+  hp.setOption({
+    backgroundColor:'transparent', animation:false,
+    title:{text:'段收益分布（按标的，持仓段数）', left:'center', textStyle:{color:'#8b92a8', fontSize:13, fontWeight:400}},
+    tooltip:Object.assign({trigger:'axis'}, TIP),
+    legend:{top:24, textStyle:{color:'#8b92a8'}},
+    grid:{left:56,right:20,top:60,bottom:40},
+    xAxis:Object.assign({type:'category', data:PNL_BINS, name:'段收益 %'}, AX),
+    yAxis:Object.assign({type:'value', name:'持仓段数', minInterval:1, splitLine:{lineStyle:{color:'rgba(42,49,66,.6)'}}}, AX),
+    series: HA_ASSETS.map(function(a){return {name:a, type:'bar', data:HA_PNL[a], itemStyle:{color:HA_COLORS[a]}, barMaxWidth:26};})
+  });
+  window.addEventListener('resize', function(){ nc.resize(); mc.resize(); hd.resize(); hp.resize(); });
 })();
 </script>
 </body>

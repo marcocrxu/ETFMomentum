@@ -197,6 +197,35 @@ for a, v in HA["by_asset"].items():
 
 HA_CASH = HA["cash"]
 
+# ── 直方图数据: 收益分布(7桶) / 持有天数分布(5桶), 分标的 + 合计 ──
+PNL_BINS = ["≤-5", "(-5,-2]", "(-2,0]", "(0,2]", "(2,5]", "(5,10]", ">10"]
+DAYS_BINS = ["1-5", "6-10", "11-20", "21-40", "40+"]
+HA_ASSETS = sorted(HA["by_asset"].keys())
+
+
+def pnl_hist(legs):
+    h = [0] * 7
+    for l in legs:
+        p = l["pnl"]
+        if p is None:
+            continue
+        if p <= -5: h[0] += 1
+        elif p <= -2: h[1] += 1
+        elif p < 0: h[2] += 1
+        elif p < 2: h[3] += 1
+        elif p < 5: h[4] += 1
+        elif p <= 10: h[5] += 1
+        else: h[6] += 1
+    return h
+
+
+HA_PNL = {a: pnl_hist([l for l in HA["legs"] if l["asset"] == a]) for a in HA_ASSETS}
+HA_PNL["合计"] = pnl_hist(HA["legs"])
+HA_DAYS = {a: HA["by_asset"][a]["days_buckets"] for a in HA_ASSETS}
+HA_DAYS["合计"] = [sum(HA["by_asset"][a]["days_buckets"][i] for a in HA_ASSETS)
+                   for i in range(5)]
+HA_CHART_ASSETS = HA_ASSETS + ["合计"]
+
 # ── 消融判定 ──
 NOTES = {
     "accel_cooldown0": "⚠️ 用户决议项(I-17, 2026-08-18): 回退后全样本更高, 但该冷却使 2025 年 +16.2pp(54.0%→70.2%); 2026 年(截至 08-20)则为 −14.7pp。决议基于 2025 年证据, 维持默认并列入观察。",
@@ -679,6 +708,8 @@ HTML = f"""<!DOCTYPE html>
         <tbody>{HA_ROWS}</tbody>
       </table>
       <p class="small"><b>口径：</b>每段持仓 = 买入/切换入 → 卖出/切换出/期末持有的完整腿；收益为段内净值盈亏(含手续费)，期末持仓段计入；收益贡献 = 各段盈亏(pp)之和，贡献占比 = 该标的总盈亏 / 全池总盈亏；时间占比 = 该标的持有交易日 / 全样本交易日。</p>
+      <div id="hold-days-chart" style="height:300px;margin-top:10px"></div>
+      <div id="hold-pnl-chart" style="height:300px;margin-top:6px"></div>
     </div>
   </div>
 
@@ -762,6 +793,12 @@ const MOM_P = {json.dumps(mom_ps)};
 const MOM_ANN = {json.dumps(mom_ann)};
 const MOM_CAL = {json.dumps(mom_cal)};
 const MOM_DD = {json.dumps(mom_dd)};
+const HA_ASSETS = {json.dumps(HA_CHART_ASSETS)};
+const HA_PNL = {json.dumps(HA_PNL)};
+const HA_DAYS = {json.dumps(HA_DAYS)};
+const PNL_BINS = {json.dumps(PNL_BINS)};
+const DAYS_BINS = {json.dumps(DAYS_BINS)};
+const HA_COLORS = {{'创业':'#4caf50','纳指':'#42a5f5','黄金':'#facc15','合计':'#e94560'}};
 (function(){{
   var TIP = {{backgroundColor:'rgba(20,24,36,.95)', borderColor:'#2a3142', textStyle:{{color:'#e8eaf0'}}}};
   var AX = {{axisLine:{{lineStyle:{{color:'#2a3142'}}}}, axisLabel:{{color:'#8b92a8'}}}};
@@ -800,7 +837,29 @@ const MOM_DD = {json.dumps(mom_dd)};
       {{name:'最大回撤%', type:'line', yAxisIndex:1, data:MOM_DD, showSymbol:false, lineStyle:{{color:'#8b92a8',width:1}}}}
     ]
   }});
-  window.addEventListener('resize', function(){{ nc.resize(); mc.resize(); }});
+  var hd = echarts.init(document.getElementById('hold-days-chart'));
+  hd.setOption({{
+    backgroundColor:'transparent', animation:false,
+    title:{{text:'持有天数分布（按标的，持仓段数）', left:'center', textStyle:{{color:'#8b92a8', fontSize:13, fontWeight:400}}}},
+    tooltip:Object.assign({{trigger:'axis'}}, TIP),
+    legend:{{top:24, textStyle:{{color:'#8b92a8'}}}},
+    grid:{{left:56,right:20,top:60,bottom:40}},
+    xAxis:Object.assign({{type:'category', data:DAYS_BINS, name:'持有天数'}}, AX),
+    yAxis:Object.assign({{type:'value', name:'持仓段数', minInterval:1, splitLine:{{lineStyle:{{color:'rgba(42,49,66,.6)'}}}}}}, AX),
+    series: HA_ASSETS.map(function(a){{return {{name:a, type:'bar', data:HA_DAYS[a], itemStyle:{{color:HA_COLORS[a]}}, barMaxWidth:26}};}})
+  }});
+  var hp = echarts.init(document.getElementById('hold-pnl-chart'));
+  hp.setOption({{
+    backgroundColor:'transparent', animation:false,
+    title:{{text:'段收益分布（按标的，持仓段数）', left:'center', textStyle:{{color:'#8b92a8', fontSize:13, fontWeight:400}}}},
+    tooltip:Object.assign({{trigger:'axis'}}, TIP),
+    legend:{{top:24, textStyle:{{color:'#8b92a8'}}}},
+    grid:{{left:56,right:20,top:60,bottom:40}},
+    xAxis:Object.assign({{type:'category', data:PNL_BINS, name:'段收益 %'}}, AX),
+    yAxis:Object.assign({{type:'value', name:'持仓段数', minInterval:1, splitLine:{{lineStyle:{{color:'rgba(42,49,66,.6)'}}}}}}, AX),
+    series: HA_ASSETS.map(function(a){{return {{name:a, type:'bar', data:HA_PNL[a], itemStyle:{{color:HA_COLORS[a]}}, barMaxWidth:26}};}})
+  }});
+  window.addEventListener('resize', function(){{ nc.resize(); mc.resize(); hd.resize(); hp.resize(); }});
 }})();
 </script>
 </body>
