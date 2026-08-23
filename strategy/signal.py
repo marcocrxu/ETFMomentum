@@ -58,6 +58,7 @@ class SignalConfig:
     fip_tiebreak: bool = False     # FIP动量质量: 动量差<min_gap时选上涨路径更平滑者
     abs_stop_loss: bool = True     # 绝对止损: 持仓仍动量第一且pnl<=stop_loss时清到空仓(补盲区, 2026-08 起默认开)
     crash_alloc: float = 1.0       # 恐慌抄底切换仓位比例 (0~1): 已持其他标的时切此比例到创业; 空仓则强制全仓
+    crash_target_name: str = "创业"  # 恐慌抄底的买入目标标的名 (默认创业; I-18 换池实验用, 需在池内才生效)
     top_k: int = 1                 # 持仓数: 1=Top-1全仓(原行为); >1=Top-K等权轮动(独立引擎)
     mom_skip: int = 0              # 排名动量跳过最近N天(短期反转规避), 0=关闭
     confirm_bind_identity: bool = False  # 确认计数绑定候选身份(B1修复): 同一挑战者连续N天第一才计数;
@@ -282,7 +283,8 @@ def _compute_signals_topk(
 
         held_idx = [i for i in range(n_etfs) if w[i] > 1e-9]
         buys = []; sells = []
-        cyb_pool_idx = etf_names.index("创业") if "创业" in etf_names else -1
+        cyb_pool_idx = (etf_names.index(cfg.crash_target_name)
+                        if cfg.crash_target_name in etf_names else -1)
 
         if cfg.crash_enabled and crash_now and t >= crash_held_until and cyb_pool_idx >= 0:
             if cyb_pool_idx not in held_idx:
@@ -729,7 +731,8 @@ def compute_signals(
             if th_cyb is not None and mom10_cyb[tf] < th_cyb and cyb_idx_p[tf] < ma200_cyb[tf]:
                 crash_now = True
 
-        cyb_pool_idx = etf_names.index("创业") if "创业" in etf_names else -1
+        cyb_pool_idx = (etf_names.index(cfg.crash_target_name)
+                        if cfg.crash_target_name in etf_names else -1)
         if (cfg.crash_enabled and crash_now and t >= crash_held_until
                 and cyb_pool_idx >= 0):
             if sat_pos >= 0:

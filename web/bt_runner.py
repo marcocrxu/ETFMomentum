@@ -116,6 +116,7 @@ def run_backtest(params):
         fip_tiebreak=params.get("fip_on", False),
         abs_stop_loss=params.get("abs_stop_on", True),
         crash_alloc=float(params.get("crash_alloc", 100)) / 100.0,
+        crash_target_name=str(params.get("crash_target_name", "创业")),
         top_k=int(params.get("top_k", 1)),
         mom_skip=int(params.get("mom_skip", 0)),
         fast_lane_staged=bool(params.get("fast_lane_staged", False)),
