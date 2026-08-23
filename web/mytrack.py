@@ -363,6 +363,57 @@ def vol20s(assets):
     return out
 
 
+def _mom10_series(adj):
+    """从收盘序列算 mom10 与其加速止盈阈值(expanding μ+3σ, shift(1), min60)"""
+    if len(adj) < 70:
+        return None
+    s = pd.Series(adj, dtype=float)
+    mom10 = (s / s.shift(10) - 1) * 100
+    ex = mom10.expanding(min_periods=60)
+    th = (ex.mean() + 3 * ex.std()).shift(1)
+    cur, t = mom10.iloc[-1], th.iloc[-1]
+    if pd.isna(cur) or pd.isna(t):
+        return None
+    c0 = s.iloc[-11]               # 10 日前收盘
+    trig = c0 * (1 + t / 100)
+    return {"mom10": round(float(cur), 2), "th": round(float(t), 2),
+            "gap": round(float(t - cur), 2),
+            "trigger_price": round(float(trig), 3),
+            "trigger_pct": round(float(trig / s.iloc[-1] - 1) * 100, 2)}
+
+
+def mom10_infos(assets):
+    """{asset: {mom10, th(止盈阈值), gap(还差), trigger_price, trigger_pct}}"""
+    out = {}
+    qq_csv = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "data", "qqq_usdcny.csv")
+    for a in assets:
+        try:
+            if a in ALL_CODES:
+                path = os.path.join(FEED.cache_dir,
+                                    ALL_CODES[a].replace(".", "_") + ".csv")
+                df = pd.read_csv(path, usecols=["close", "adj_factor"])
+                adj = df["close"] * df["adj_factor"] / df["adj_factor"].iloc[-1]
+                v = _mom10_series(adj.values)
+            elif a in IDX_CODES:
+                path = os.path.join(FEED.cache_dir,
+                                    IDX_CODES[a].replace(".", "_") + ".csv")
+                df = pd.read_csv(path, usecols=["close", "adj_factor"])
+                adj = df["close"] * df["adj_factor"] / df["adj_factor"].iloc[-1]
+                v = _mom10_series(adj.values)
+            elif a in ("QQQ", "USDCNY") and os.path.exists(qq_csv):
+                df = pd.read_csv(qq_csv, usecols=["QQQ", "USDCNY=X"])
+                col = "QQQ" if a == "QQQ" else "USDCNY=X"
+                v = _mom10_series(df[col].values)
+            else:
+                continue
+            if v:
+                out[a] = v
+        except Exception:
+            continue
+    return out
+
+
 def live_quotes(assets):
     """腾讯实时行情: {asset: {price, prev_close, pct, time}, trade_day: bool}。
     分钟级刷新用。asset 可以是标的池名称(ALL_CODES)、基准指数名称、或 QQQ/USDCNY。
@@ -439,8 +490,9 @@ def live_quotes(assets):
                       "pct": round(pct, 2), "time": t}
     # 任一 A 股标的的行情时间=今天 → 今天是已开盘的交易日
     out["trade_day"] = today_s in a_share_dates
-    # 所有被选中标的的 σ20 (供页面显示; 本地缓存计算, 无外部请求)
+    # 所有被选中标的的 σ20 与 mom10/止盈阈值 (供页面显示; 本地缓存计算, 无外部请求)
     out["vol20"] = vol20s(list(out.keys()))
+    out["mom10"] = mom10_infos(list(out.keys()))
     return out
 
 

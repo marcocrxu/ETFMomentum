@@ -288,6 +288,16 @@ function renderOpenBox(q, eq){
         var v = (q.vol20 || {})[a];
         return v ? esc(a) + ' ' + v.vol20 + '%(线' + v.stop + '%/年' + v.ann + '%)' : '';
       }).filter(Boolean).join(' · ')
+    + '</div>'
+    + '<div style="color:var(--muted);margin-top:2px;font-size:12px">mom10→止盈阈值(μ+3σ)：'
+    + liveAssets().map(function(a){
+        var v = (q.mom10 || {})[a];
+        if (!v) return '';
+        var warn = v.gap < 1 ? ' ⚠️' : '';
+        return esc(a) + ' ' + (v.mom10 >= 0 ? '+' : '') + v.mom10 + '%→'
+          + (v.th >= 0 ? '+' : '') + v.th + '%(差' + v.gap.toFixed(2) + 'pp' + warn
+          + (v.trigger_price ? '/触发¥' + v.trigger_price : '') + ')';
+      }).filter(Boolean).join(' · ')
     + '</div>';
   var el = document.getElementById('mine-ret');
   if (el && DATA.mine.initial_cash){
