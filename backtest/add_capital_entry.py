@@ -46,10 +46,15 @@ def main():
         mom20[nm] = m
 
     summary = {}
+    PNL_BUCKETS = [("≤-5%", -1e9, -5), ("(-5,-2]%", -5, -2), ("(-2,0]%", -2, 0),
+                   ("(0,2]%", 0, 2), ("(2,5]%", 2, 5), ("(5,10]%", 5, 10), (">10%", 10, 1e9)]
     for H in HORIZONS:
         rows = []
+        leg_entry = None          # 当前持仓腿的入场日索引
         for i in range(0, n - H - 1):
             p_i = pos[i]
+            if i == 0 or pos[i] != pos[i - 1]:
+                leg_entry = i if p_i >= 0 else None    # 持仓变化日 = 新腿起点
             retA = nav[i + H] / nav[i] - 1                    # 立即追仓, 跟随策略
             s = None
             for j in range(i + 1, i + H + 1):                  # 第一次持仓变化
@@ -62,9 +67,13 @@ def main():
             retD = float(np.mean([nav[i + H] / nav[i + k] - 1 for k in range(1, ks + 1)]))
             nm = labels[p_i + 1]        # position_series: -1=空仓, 0..N-1=标的; labels 前插了"空仓"
             m20 = mom20.get(nm, np.full(n, np.nan))[i]
+            # 注入时当前持仓腿的浮盈/浮亏 (净值口径: nav[i]/nav[leg_entry]-1)
+            leg_pnl = ((nav[i] / nav[leg_entry] - 1) * 100
+                       if p_i >= 0 and leg_entry is not None and nav[leg_entry] > 0 else None)
             rows.append({"i": i, "date": dates[i], "pos_i": int(p_i), "pos": nm,
                          "retA": retA, "retB": retB, "retD": retD, "waited": waited,
-                         "mom20": None if (m20 is None or np.isnan(m20)) else round(float(m20), 4)})
+                         "mom20": None if (m20 is None or np.isnan(m20)) else round(float(m20), 4),
+                         "leg_pnl": round(float(leg_pnl), 2) if leg_pnl is not None else None})
 
         # 只统计"注入时策略有持仓"的日子 (空仓日 A≡B 无信息量, 单独计数)
         held = [x for x in rows if x["pos_i"] >= 0]
@@ -87,6 +96,11 @@ def main():
             by_pos[nm] = agg([x for x in held if x["pos"] == nm])
         by_mom = {"mom20_positive": agg([x for x in held if x["mom20"] is not None and x["mom20"] > 0]),
                   "mom20_negative": agg([x for x in held if x["mom20"] is not None and x["mom20"] <= 0])}
+        # 按注入时当前持仓腿的浮盈/浮亏分档
+        by_pnl = {}
+        for label, lo, hi in PNL_BUCKETS:
+            by_pnl[label] = agg([x for x in held if x["leg_pnl"] is not None
+                                 and lo < x["leg_pnl"] <= hi])
         cash_n = len([x for x in rows if x["pos_i"] < 0])
 
         # 分布: A-B 的尾部不对称性 (A大胜/B大胜以 ±5pp 为界)
@@ -102,7 +116,7 @@ def main():
 
         summary[str(H)] = {"overall": agg(held), "overall_dist": dist(held),
                            "by_pos": by_pos, "by_pos_dist": by_pos_dist,
-                           "by_mom20": by_mom, "cash_days": cash_n}
+                           "by_mom20": by_mom, "by_leg_pnl": by_pnl, "cash_days": cash_n}
 
         print("=" * 72)
         print("持有期 H = %d 交易日 (约 %d 个月)" % (H, round(H / 21)))
@@ -127,6 +141,14 @@ def main():
             if dd2 and dd2["n"] >= 30:
                 print("    [持%s] A大胜%.1f%% A小胜%.1f%% 打平%.1f%% B小胜%.1f%% B大胜%.1f%% | P95 %+.1f / P5 %+.1f" % (
                     nm, dd2["A_big_ge5"], dd2["A_small_1_5"], dd2["tie_abs1"], dd2["B_small_1_5"], dd2["B_big_le5"], dd2["A_p95"], dd2["B_p5"]))
+        print("  【按注入时当前持仓收益率分档】(A=立即追 B=等调仓 D=分批)")
+        print("    %-9s %5s | %7s %9s | %8s %8s %8s | 推荐" % ("档位", "n", "A胜率", "A-B均值", "A均收益", "B均收益", "D均收益"))
+        for label, _, _ in PNL_BUCKETS:
+            s3 = by_pnl[label]
+            if s3 and s3["n"] >= 30:
+                rec = "立即追" if s3["mean_diff"] >= 1 else ("等调仓" if s3["mean_diff"] <= -1 else "差别小/分批")
+                print("    %-9s %5d | %6.1f%% %+8.2fpp | %+7.2f%% %+7.2f%% %+7.2f%% | %s" % (
+                    label, s3["n"], s3["winA"], s3["mean_diff"], s3["meanA"], s3["meanB"], s3["meanD"], rec))
 
     # 最近状态 (回答"现在怎么办")
     print("=" * 72)
