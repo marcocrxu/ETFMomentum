@@ -226,6 +226,36 @@ HA_DAYS["合计"] = [sum(HA["by_asset"][a]["days_buckets"][i] for a in HA_ASSETS
                    for i in range(5)]
 HA_CHART_ASSETS = HA_ASSETS + ["合计"]
 
+# ── 加仓时机研究 (backtest/add_capital_entry.py 的结果) ──
+try:
+    CAI = json.load(open("/root/etf_strategy/backtest/add_capital_entry_result.json"))
+except Exception:
+    CAI = None
+
+CAI_OVERALL_ROWS, CAI_PNL_ROWS = "", ""
+if CAI:
+    for H, lab in (("20", "1 个月"), ("60", "3 个月"), ("120", "6 个月"), ("250", "12 个月")):
+        o = CAI["summary"][H]["overall"]
+        CAI_OVERALL_ROWS += (
+            f"<tr><td>{lab}</td><td>{o['n']}</td><td>{f1(o['winA'])}%</td>"
+            f"<td class='num-pos'>{f2(o['mean_diff'])}pp</td><td>{f2(o['median_diff'])}pp</td>"
+            f"<td>{f2(o['meanA'])}%</td><td>{f2(o['meanB'])}%</td><td>{f2(o['meanD'])}%</td></tr>")
+    for label in ("≤-5%", "(-5,-2]%", "(-2,0]%", "(0,2]%", "(2,5]%", "(5,10]%", ">10%"):
+        v = CAI["summary"]["250"]["by_leg_pnl"].get(label)
+        if not v:
+            CAI_PNL_ROWS += (f"<tr><td>{label}</td><td>0</td>"
+                             "<td colspan='7' class='small'>样本为 0 —— 策略绝对止损在 −5% 清仓，"
+                             "收盘口径下不存在「深亏超 5% 仍持仓」的加仓时点</td></tr>")
+            continue
+        if v["mean_diff"] >= 1: rec = "立即追"
+        elif v["mean_diff"] <= -1: rec = "等调仓"
+        else: rec = "差别小，分批亦可"
+        CAI_PNL_ROWS += (
+            f"<tr><td>{label}</td><td>{v['n']}</td><td>{f1(v['winA'])}%</td>"
+            f"<td class='num-pos'>{f2(v['mean_diff'])}pp</td>"
+            f"<td>{f2(v['meanA'])}%</td><td>{f2(v['meanB'])}%</td><td>{f2(v['meanD'])}%</td>"
+            f"<td><b>{rec}</b></td></tr>")
+
 # ── 消融判定 ──
 NOTES = {
     "accel_cooldown0": "⚠️ 用户决议项(I-17, 2026-08-18): 回退后全样本更高, 但该冷却使 2025 年 +16.2pp(54.0%→70.2%); 2026 年(截至 08-20)则为 −14.7pp。决议基于 2025 年证据, 维持默认并列入观察。",
@@ -721,6 +751,32 @@ HTML = f"""<!DOCTYPE html>
         <tbody>{COST_ROWS}</tbody>
       </table>
       <p>十年约 {B['trade_count']} 次交易(买+卖)，滑点对复利影响显著：每 0.1% 单边滑点约削去 {f1(B['ann_ret'] - SLIP['0.001']['ann_ret'])}pp 年化。ETF 实际冲击成本接近零，实盘评估建议按 0.05% 滑点口径。</p>
+    </div>
+  </div>
+
+  <!-- ═══════════ 5 讨论 ═══════════ -->
+  <h2 class="sec">4.7 · 加仓时机研究：立即追 vs 等下一次调仓（2026-08-21/23）</h2>
+  <div class="card">
+    <div class="card-header"><h2>4.7 追加本金怎么进：立即追当前持仓 vs 等下次调仓</h2></div>
+    <div style="padding:18px">
+      <p><b>方法：</b>复用生产回测引擎，在全历史每个交易日模拟一笔加仓，比较 A「立即按当前持仓买入」、B「等策略第一次调仓再进」、D「10 日均分」三种方式在同一持有窗口 [注入日, 注入日+H] 的收益（A−B 为两者收益差，pp）。</p>
+      <h3>总体（各持有期口径）</h3>
+      <table>
+        <thead><tr><th>持有期</th><th>样本</th><th>A 胜率</th><th>A−B 平均</th><th>A−B 中位</th><th>A 均收益</th><th>B 均收益</th><th>D 均收益</th></tr></thead>
+        <tbody>{CAI_OVERALL_ROWS}</tbody>
+      </table>
+      <h3>按「注入时当前持仓收益率」分档（12 个月口径）</h3>
+      <table>
+        <thead><tr><th>当前持仓浮盈亏</th><th>样本</th><th>A 胜率</th><th>A−B 平均</th><th>A 均收益</th><th>B 均收益</th><th>D 均收益</th><th>推荐</th></tr></thead>
+        <tbody>{CAI_PNL_ROWS}</tbody>
+      </table>
+      <ul style="padding-left:22px">
+        <li><b>每一档都是「立即追」赢</b>——「无脑追」的结论经得起收益率分档检验，四个月口径方向一致，无任何档位反转。</li>
+        <li>优势呈<b>倒 U 型</b>：刚转正(0~5%)档最优(+4.3pp、胜率 68~69%)——策略刚确认趋势时追仓最划算；浮亏档次之；大涨后(&gt;10%)减弱到 +2.6pp(离加速止盈更近，等待代价变小)。</li>
+        <li>不利尾部几乎全压在「等调仓」一侧：等调仓吃大亏(≥5pp)概率 28.5% 是占大便宜(6.8%)的 4.2 倍，且有 24.9% 概率一个月等不到调仓。</li>
+        <li>大额资金心理压力大时，D（10 日均分）期望接近 A，是低后悔的折中。</li>
+      </ul>
+      <p class="small"><b>口径：</b>空仓注入日 A≡B 已剔除；收益为净值口径含手续费；完整明细与脚本见 backtest/add_capital_entry.py / add_capital_entry_result.json / 加仓时机分析.md。</p>
     </div>
   </div>
 

@@ -390,6 +390,32 @@
   </div>
 
   <!-- ═══════════ 5 讨论 ═══════════ -->
+  <h2 class="sec">4.7 · 加仓时机研究：立即追 vs 等下一次调仓（2026-08-21/23）</h2>
+  <div class="card">
+    <div class="card-header"><h2>4.7 追加本金怎么进：立即追当前持仓 vs 等下次调仓</h2></div>
+    <div style="padding:18px">
+      <p><b>方法：</b>复用生产回测引擎，在全历史每个交易日模拟一笔加仓，比较 A「立即按当前持仓买入」、B「等策略第一次调仓再进」、D「10 日均分」三种方式在同一持有窗口 [注入日, 注入日+H] 的收益（A−B 为两者收益差，pp）。</p>
+      <h3>总体（各持有期口径）</h3>
+      <table>
+        <thead><tr><th>持有期</th><th>样本</th><th>A 胜率</th><th>A−B 平均</th><th>A−B 中位</th><th>A 均收益</th><th>B 均收益</th><th>D 均收益</th></tr></thead>
+        <tbody><tr><td>1 个月</td><td>2048</td><td>61.9%</td><td class='num-pos'>1.92pp</td><td>0.88pp</td><td>3.36%</td><td>1.44%</td><td>2.38%</td></tr><tr><td>3 个月</td><td>2017</td><td>62.0%</td><td class='num-pos'>2.63pp</td><td>0.94pp</td><td>10.23%</td><td>7.60%</td><td>9.18%</td></tr><tr><td>6 个月</td><td>1965</td><td>61.8%</td><td class='num-pos'>2.72pp</td><td>1.01pp</td><td>21.17%</td><td>18.44%</td><td>20.05%</td></tr><tr><td>12 个月</td><td>1854</td><td>62.7%</td><td class='num-pos'>3.60pp</td><td>1.37pp</td><td>51.82%</td><td>48.22%</td><td>50.39%</td></tr></tbody>
+      </table>
+      <h3>按「注入时当前持仓收益率」分档（12 个月口径）</h3>
+      <table>
+        <thead><tr><th>当前持仓浮盈亏</th><th>样本</th><th>A 胜率</th><th>A−B 平均</th><th>A 均收益</th><th>B 均收益</th><th>D 均收益</th><th>推荐</th></tr></thead>
+        <tbody><tr><td>≤-5%</td><td>0</td><td colspan='7' class='small'>样本为 0 —— 策略绝对止损在 −5% 清仓，收盘口径下不存在「深亏超 5% 仍持仓」的加仓时点</td></tr><tr><td>(-5,-2]%</td><td>78</td><td>65.4%</td><td class='num-pos'>1.43pp</td><td>63.34%</td><td>61.90%</td><td>62.51%</td><td><b>立即追</b></td></tr><tr><td>(-2,0]%</td><td>430</td><td>56.3%</td><td class='num-pos'>3.16pp</td><td>54.47%</td><td>51.31%</td><td>52.99%</td><td><b>立即追</b></td></tr><tr><td>(0,2]%</td><td>382</td><td>69.1%</td><td class='num-pos'>4.27pp</td><td>50.54%</td><td>46.27%</td><td>49.22%</td><td><b>立即追</b></td></tr><tr><td>(2,5]%</td><td>406</td><td>68.2%</td><td class='num-pos'>4.28pp</td><td>51.40%</td><td>47.13%</td><td>49.53%</td><td><b>立即追</b></td></tr><tr><td>(5,10]%</td><td>309</td><td>59.5%</td><td class='num-pos'>3.87pp</td><td>50.06%</td><td>46.19%</td><td>48.49%</td><td><b>立即追</b></td></tr><tr><td>>10%</td><td>249</td><td>57.8%</td><td class='num-pos'>2.59pp</td><td>48.48%</td><td>45.89%</td><td>47.67%</td><td><b>立即追</b></td></tr></tbody>
+      </table>
+      <ul style="padding-left:22px">
+        <li><b>每一档都是「立即追」赢</b>——「无脑追」的结论经得起收益率分档检验，四个月口径方向一致，无任何档位反转。</li>
+        <li>优势呈<b>倒 U 型</b>：刚转正(0~5%)档最优(+4.3pp、胜率 68~69%)——策略刚确认趋势时追仓最划算；浮亏档次之；大涨后(&gt;10%)减弱到 +2.6pp(离加速止盈更近，等待代价变小)。</li>
+        <li>不利尾部几乎全压在「等调仓」一侧：等调仓吃大亏(≥5pp)概率 28.5% 是占大便宜(6.8%)的 4.2 倍，且有 24.9% 概率一个月等不到调仓。</li>
+        <li>大额资金心理压力大时，D（10 日均分）期望接近 A，是低后悔的折中。</li>
+      </ul>
+      <p class="small"><b>口径：</b>空仓注入日 A≡B 已剔除；收益为净值口径含手续费；完整明细与脚本见 backtest/add_capital_entry.py / add_capital_entry_result.json / 加仓时机分析.md。</p>
+    </div>
+  </div>
+
+  <!-- ═══════════ 5 讨论 ═══════════ -->
   <h2 class="sec">5 · 讨论</h2>
   <div class="card">
     <div class="card-header"><h2>5.1 结构上的优势</h2></div>
