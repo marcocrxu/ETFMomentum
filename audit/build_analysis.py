@@ -77,6 +77,126 @@ CH = channel_stats(TRADES)
 CRASH_TRADES = sorted([t for t in TRADES if t["reason"] == "恐慌抄底"],
                       key=lambda x: x["entry"])
 
+
+# ── 持仓结构分析: 分标的持有时间/收益/占比 ──
+def holding_analysis(decisions, dates):
+    """每段持仓(leg)的持有天数/收益 + 分标的聚合; 空仓段从 leg 间隙反推"""
+    legs, entry = [], None
+    for d in decisions:
+        act = d["action"]
+        if act.startswith("买入"):
+            entry = {"asset": act[2:].split("(")[0], "entry": d["date"], "reason": d["reason"]}
+        elif act.startswith("卖出"):
+            if entry is not None:
+                entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
+                              "exit_reason": d["reason"]})
+                legs.append(entry)
+            entry = None
+        elif "→" in act:
+            if entry is not None:
+                entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
+                              "exit_reason": d["reason"]})
+                legs.append(entry)
+            entry = {"asset": act.split("→")[1].split("(")[0], "entry": d["date"],
+                     "reason": d["reason"]}
+        elif act.startswith("持有"):
+            if entry is not None:
+                entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
+                              "exit_reason": d["reason"]})
+                legs.append(entry)
+            entry = None
+
+    total_days = len(dates)
+    held_days = sum(l["days"] or 0 for l in legs)
+    cash_days = max(total_days - held_days, 0)
+
+    # 空仓段: leg 间隙(交易日索引差)
+    dix = {d: i for i, d in enumerate(dates)}
+    gaps, prev_exit = [], 0
+    for l in sorted(legs, key=lambda x: x["entry"]):
+        ei = dix.get(l["entry"], prev_exit)
+        if ei > prev_exit:
+            gaps.append(ei - prev_exit)
+        prev_exit = dix.get(l["exit"], ei)
+    if total_days - 1 > prev_exit:
+        gaps.append(total_days - 1 - prev_exit)
+
+    def _q(v):
+        a = sorted(v)
+        return a[len(a) // 2]
+
+    def per_asset(asset_legs):
+        n = len(asset_legs)
+        days = [l["days"] for l in asset_legs if l["days"] is not None]
+        pnls = [l["pnl"] for l in asset_legs if l["pnl"] is not None]
+        dsum = sum(days)
+        pb = [0, 0, 0, 0, 0]           # pnl 桶: ≤-5 / -5~0 / 0~5 / 5~10 / >10
+        for p in pnls:
+            if p <= -5: pb[0] += 1
+            elif p < 0: pb[1] += 1
+            elif p < 5: pb[2] += 1
+            elif p <= 10: pb[3] += 1
+            else: pb[4] += 1
+        db = [0, 0, 0, 0, 0]           # days 桶: 1-5 / 6-10 / 11-20 / 21-40 / 40+
+        for dd in days:
+            if dd <= 5: db[0] += 1
+            elif dd <= 10: db[1] += 1
+            elif dd <= 20: db[2] += 1
+            elif dd <= 40: db[3] += 1
+            else: db[4] += 1
+        return {
+            "n": n,
+            "time_pct": round(dsum / total_days * 100, 1) if total_days else 0,
+            "days_avg": round(sum(days) / len(days), 1) if days else None,
+            "days_med": _q(days) if days else None,
+            "days_max": max(days) if days else None,
+            "pnl_avg": round(sum(pnls) / len(pnls), 2) if pnls else None,
+            "pnl_med": round(_q(pnls), 2) if pnls else None,
+            "pnl_min": round(min(pnls), 2) if pnls else None,
+            "pnl_max": round(max(pnls), 2) if pnls else None,
+            "win_rate": round(sum(1 for p in pnls if p > 0) / len(pnls) * 100, 1) if pnls else None,
+            "pnl_sum": round(sum(pnls), 1) if pnls else 0.0,
+            "pnl_buckets": pb, "days_buckets": db,
+        }
+
+    by_asset = {a: per_asset([l for l in legs if l["asset"] == a]) for a in
+                sorted(set(l["asset"] for l in legs))}
+    total_pnl_sum = sum(v["pnl_sum"] for v in by_asset.values())
+    for a, v in by_asset.items():
+        v["pnl_share"] = (round(v["pnl_sum"] / total_pnl_sum * 100, 1)
+                          if total_pnl_sum else None)
+    cash = {"time_pct": round(cash_days / total_days * 100, 1) if total_days else 0,
+            "n": len(gaps), "days_avg": round(sum(gaps) / len(gaps), 1) if gaps else None,
+            "days_med": _q(gaps) if gaps else None,
+            "days_max": max(gaps) if gaps else None}
+    return {"legs": legs, "by_asset": by_asset, "cash": cash,
+            "total_days": total_days, "held_days": held_days,
+            "legs_avg_days": round(held_days / len(legs), 1) if legs else None}
+
+
+HA = holding_analysis(B["decisions"], B["dates"])
+
+HA_ROWS = ""
+for a, v in HA["by_asset"].items():
+    pnl = v["pnl_sum"]
+    pnl_cls = "num-pos" if pnl > 0 else ("num-neg" if pnl < 0 else "")
+    share_txt = f"{v['pnl_share']:+.1f}%" if v["pnl_share"] is not None else "—"
+    HA_ROWS += (
+        "<tr>"
+        f"<td><b>{a}</b></td>"
+        f"<td>{v['n']}</td>"
+        f"<td>{v['time_pct']}%</td>"
+        f"<td>{f1(v['days_avg'])}</td><td>{f0(v['days_med'])}</td><td>{f0(v['days_max'])}</td>"
+        f"<td>{f2(v['pnl_avg'])}%</td><td>{f2(v['pnl_med'])}%</td>"
+        f"<td class='{pnl_cls}'>{pnl:+.1f}pp</td>"
+        f"<td>{share_txt}</td>"
+        f"<td>{f1(v['win_rate'])}%</td>"
+        f"<td>{v['pnl_buckets'][0]}/{v['pnl_buckets'][1]}/{v['pnl_buckets'][2]}/{v['pnl_buckets'][3]}/{v['pnl_buckets'][4]}</td>"
+        f"<td>{v['days_buckets'][0]}/{v['days_buckets'][1]}/{v['days_buckets'][2]}/{v['days_buckets'][3]}/{v['days_buckets'][4]}</td>"
+        "</tr>")
+
+HA_CASH = HA["cash"]
+
 # ── 消融判定 ──
 NOTES = {
     "accel_cooldown0": "⚠️ 用户决议项(I-17, 2026-08-18): 回退后全样本更高, 但该冷却使 2025 年 +16.2pp(54.0%→70.2%); 2026 年(截至 08-20)则为 −14.7pp。决议基于 2025 年证据, 维持默认并列入观察。",
@@ -329,7 +449,7 @@ HTML = f"""<!DOCTYPE html>
   <header class="page-header">
     <h1>ETF 动量轮动策略 · 研究分析报告</h1>
     <p class="subtitle">十年样本上的机制分解、参数稳健性与样本外验证</p>
-    <p class="meta">数据截止 {META['end']} · 回测引擎 web/bt_runner.run_backtest(与实盘共用 strategy/signal.py) · 报告生成 2026-08-20 · 标的池 {META['universe']}</p>
+    <p class="meta">数据截止 {META['end']} · 回测引擎 web/bt_runner.run_backtest(与实盘共用 strategy/signal.py) · 报告生成 2026-08-23 · 标的池 {META['universe']}</p>
   </header>
   <nav class="page-nav">
     <a href="/">📊 回测</a>
@@ -547,6 +667,18 @@ HTML = f"""<!DOCTYPE html>
         <thead><tr><th>入场日</th><th>出场日</th><th>盈亏</th><th>持有天数</th><th>出场方式</th></tr></thead>
         <tbody>{CRASH_ROWS}</tbody>
       </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>4.5b 持仓结构：分标的持有时间 / 收益分布 / 持仓占比</h2></div>
+    <div style="padding:18px">
+      <p>全样本 <b>{HA['total_days']}</b> 个交易日中，持仓 {HA['held_days']} 天({100 - HA_CASH['time_pct']:.1f}%)、空仓 {HA_CASH['n']} 段共 {HA['total_days'] - HA['held_days']} 天({HA_CASH['time_pct']}%，空仓段中位 {f0(HA_CASH['days_med'])} 天、最长 {f0(HA_CASH['days_max'])} 天)；共 {len(HA['legs'])} 段持仓，平均每段持有 {HA['legs_avg_days']} 个交易日。</p>
+      <table>
+        <thead><tr><th>标的</th><th>持仓段数</th><th>时间占比</th><th>均持有</th><th>中位持有</th><th>最长持有</th><th>平均收益</th><th>中位收益</th><th>收益贡献</th><th>贡献占比</th><th>胜率</th><th>收益分布(≤-5/-5~0/0~5/5~10/&gt;10)</th><th>持有天数分布(1-5/6-10/11-20/21-40/40+)</th></tr></thead>
+        <tbody>{HA_ROWS}</tbody>
+      </table>
+      <p class="small"><b>口径：</b>每段持仓 = 买入/切换入 → 卖出/切换出/期末持有的完整腿；收益为段内净值盈亏(含手续费)，期末持仓段计入；收益贡献 = 各段盈亏(pp)之和，贡献占比 = 该标的总盈亏 / 全池总盈亏；时间占比 = 该标的持有交易日 / 全样本交易日。</p>
     </div>
   </div>
 

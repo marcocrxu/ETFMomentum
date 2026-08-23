@@ -79,12 +79,20 @@ def trades_from_decisions(decisions):
         if act.startswith("买入"):
             entry = {"asset": act[2:].split("(")[0], "entry": d["date"],
                      "reason": d["reason"]}
-        elif act.startswith("卖出") or "→" in act:
+        elif act.startswith("卖出"):
             if entry is not None:
                 entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
                               "exit_reason": d["reason"]})
                 trades.append(entry)
             entry = None
+        elif "→" in act:
+            # 切换行同时关闭旧腿并开启新腿 (与 build_analysis.py 同口径, 2026-08-23 修)
+            if entry is not None:
+                entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
+                              "exit_reason": d["reason"]})
+                trades.append(entry)
+            entry = {"asset": act.split("→")[1].split("(")[0], "entry": d["date"],
+                     "reason": d["reason"]}
         if act.startswith("持有"):
             if entry is not None:
                 entry.update({"exit": d["date"], "pnl": d["pnl"], "days": d["days"],
@@ -116,6 +124,7 @@ def main():
     r = run(dict(base))
     results["baseline"] = core(r)
     results["baseline"]["bench"] = nav_stats(r["benchmark"])
+    results["baseline"]["benchmark"] = r["benchmark"]   # 等权基准净值序列(供分析页图)
     results["baseline"]["etf_navs"] = {k: nav_stats(v) for k, v in r["etf_navs"].items()}
     results["baseline"]["dd_episodes"] = dd_episodes(r["dates"], r["nav"], r["drawdown"])
     # 2026-06/07 局部回撤详情 (旧页最大回撤段, 新默认下已不是最深)
