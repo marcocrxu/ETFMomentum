@@ -312,7 +312,9 @@ function updateChartLive(q, eq){
   if (!chartInst) return;
   var nowD = todayStr();
   var xdata = DATA.dates.slice();
+  var tradeDay = !!(q && q.trade_day);            // 服务端判定: 今天是否已开盘的A股交易日
   var xAppend = (xdata[xdata.length - 1] !== nowD);
+  if (!tradeDay && xAppend) return;               // 非交易日/开盘前: 不画新一天的点, 保持上一交易日收盘
   var upd = [];
   // 1) 我的实盘
   if (eq !== null && eq !== undefined && DATA.mine.initial_cash){

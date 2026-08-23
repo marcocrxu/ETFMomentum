@@ -308,23 +308,25 @@ strat_run.last_pos = None
 
 
 # 基准指数 → 腾讯行情代码（对账页指数曲线尾部实时用; 科创50 基准用同名 ETF 近似）
-IDX_TENCENT = {"上证指数": "s_sh000001", "创业板指数": "s_sz399006",
-               "深证成指": "s_sz399001"}
+IDX_TENCENT = {"上证指数": "sh000001", "创业板指数": "sz399006",
+               "深证成指": "sz399001"}
 
 # 外盘/外汇（对账页实时展示用）
 SPECIAL_TENCENT = {"QQQ": "usQQQ", "USDCNY": "whUSDCNY"}
 
 
 def live_quotes(assets):
-    """腾讯实时行情: {asset: {price, prev_close, pct, time}}。分钟级刷新用。
-    asset 可以是标的池名称(ALL_CODES)、基准指数名称、或 QQQ/USDCNY。"""
+    """腾讯实时行情: {asset: {price, prev_close, pct, time}, trade_day: bool}。
+    分钟级刷新用。asset 可以是标的池名称(ALL_CODES)、基准指数名称、或 QQQ/USDCNY。
+    A股用长格式(无 s_ 前缀)以拿到行情自带时间戳: 据此判定 trade_day ——
+    非交易日/开盘前, 行情时间仍停留在上一交易日 → 前端不画新一天的点。"""
     tags = []
     for a in assets:
         code = ALL_CODES.get(a)
         if code:
             code = code.split(".")[0]             # 去掉 .SH/.SZ 后缀
             ex = "sh" if code[0] in "569" else "sz"
-            tags.append(("s_%s%s" % (ex, code), a))
+            tags.append(("%s%s" % (ex, code), a))
         elif a in IDX_TENCENT:
             tags.append((IDX_TENCENT[a], a))
         elif a in SPECIAL_TENCENT:
@@ -341,6 +343,8 @@ def live_quotes(assets):
         return {}
     tag_to_asset = dict(tags)
     now_str = _dt.datetime.now().strftime("%H:%M:%S")
+    today_s = _dt.datetime.now().strftime("%Y%m%d")
+    a_share_dates = set()
     out = {}
     for line in raw.strip().split("\n"):
         if "=" not in line or "~" not in line:
@@ -368,17 +372,25 @@ def live_quotes(assets):
                 if len(t) == 14:
                     t = "%s-%s-%s %s:%s:%s" % (t[:4], t[4:6], t[6:8], t[8:10], t[10:12], t[12:14])
             else:
-                # A股/ETF 精简格式: 3现价 4涨跌额 5涨跌幅%
+                # A股/ETF 长格式: 3现价 4昨收 30时间(YYYYMMDDHHMMSS) 32涨跌幅%
                 price = float(parts[3])
-                prev = round(price - float(parts[4]), 4)
-                pct = float(parts[5])
-                t = now_str
+                prev = float(parts[4])
+                pct = float(parts[32]) if len(parts) > 32 else 0.0
+                t_raw = parts[30] if len(parts) > 30 else ""
+                if len(t_raw) >= 14:
+                    t = "%s-%s-%s %s:%s:%s" % (t_raw[:4], t_raw[4:6], t_raw[6:8],
+                                               t_raw[8:10], t_raw[10:12], t_raw[12:14])
+                    a_share_dates.add(t_raw[:8])
+                else:
+                    t = now_str
         except Exception:
             continue
         if price <= 0:
             continue
         out[asset] = {"price": price, "prev_close": prev,
                       "pct": round(pct, 2), "time": t}
+    # 任一 A 股标的的行情时间=今天 → 今天是已开盘的交易日
+    out["trade_day"] = today_s in a_share_dates
     return out
 
 
