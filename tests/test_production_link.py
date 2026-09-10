@@ -80,3 +80,30 @@ def test_live_page_uses_shared_view():
     # 展示层不得出现策略判断
     for kw in ["compute_signals", "sh_mom >", "exception_gap", "min_hold"]:
         assert kw not in page_src, f"live_page.py 不得包含策略逻辑: {kw}"
+
+
+def test_suggestion_anchors_actual_position():
+    """操作建议必须以实际持仓为锚 (2026-09-11 事故: 按模拟仓位说'卖出纳指',
+    用户实际从未持有纳指, 推送造成恐慌)"""
+    from live.daily_run import suggestion_for
+
+    # 核心事故场景: 模拟仓=纳指, 实际仓=黄金 → 绝不允许出现"卖出纳指"
+    text, level = suggestion_for(
+        {"signal": "BUY", "target": "黄金", "sim_position": "黄金",
+         "prev_position": "纳指", "sim_entry_date": "2026-09-11"},
+        {"position": "黄金"})
+    assert "纳指" not in text, f"操作建议不得引用用户未持有的标的: {text}"
+    assert text == "已持有 黄金，无需操作"
+
+    # 策略空仓 + 实际持仓 → 让用户对齐卖出
+    assert suggestion_for({"signal": "HOLD", "sim_position": "", "sim_entry_date": ""},
+                          {"position": "黄金"}) == ("卖出 黄金，空仓（对齐策略）", "cash")
+    # 空仓信号 + 实际持仓 → 卖出实际持仓
+    assert suggestion_for({"signal": "CASH", "sim_position": ""},
+                          {"position": "黄金"}) == ("卖出 黄金，空仓", "cash")
+    # 空仓信号 + 实际已空仓
+    assert suggestion_for({"signal": "CASH", "sim_position": ""},
+                          {"position": None}) == ("保持空仓", "wait")
+    # 策略持仓 + 实际空仓 → 提示买入对齐
+    assert suggestion_for({"signal": "HOLD", "sim_position": "黄金", "sim_entry_date": "2026-08-11"},
+                          {"position": None}) == ("买入 黄金（对齐策略仓位）", "switch")
