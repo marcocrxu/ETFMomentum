@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>实盘实况 · ETF 动量轮动</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #0d1117; color: #e6edf3; min-height: 100vh; padding: 20px; }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: baseline;
+            flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  h1 { font-size: 22px; }
+  .badge { font-size: 12px; background: #1f6feb33; color: #58a6ff;
+           border: 1px solid #1f6feb66; border-radius: 12px; padding: 3px 10px; }
+  .muted { color: #8b949e; font-size: 13px; }
+  .banner { border-radius: 14px; padding: 20px 22px; margin-bottom: 16px;
+            border: 1px solid; }
+  .banner.hold   { background: #0d2218; border-color: #2ea04366; }
+  .banner.switch { background: #221a0d; border-color: #d2992266; }
+  .banner.cash   { background: #2b0d0d; border-color: #f8514966; }
+  .banner.wait   { background: #161b22; border-color: #30363d; }
+  .banner .sig { font-size: 13px; margin-bottom: 6px; }
+  .banner .act { font-size: 24px; font-weight: 700; }
+  .banner .reason { margin-top: 8px; font-size: 13px; color: #b1bac4; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px; margin-bottom: 16px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+          padding: 16px; position: relative; }
+  .card .name { font-size: 15px; font-weight: 600; }
+  .card .mom { font-size: 28px; font-weight: 700; margin: 6px 0; }
+  .pos { color: #3fb950; } .neg { color: #f85149; }
+  .card .price { font-size: 13px; color: #8b949e; }
+  .tag { display: inline-block; font-size: 11px; border-radius: 8px;
+         padding: 2px 8px; margin-top: 8px; margin-right: 4px; }
+  .tag.sim { background: #1f6feb33; color: #58a6ff; }
+  .tag.act { background: #9e6a0333; color: #d29922; }
+  .medal { position: absolute; top: 12px; right: 14px; font-size: 20px; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+           padding: 16px 18px; margin-bottom: 16px; }
+  .panel h2 { font-size: 15px; margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0;
+         border-bottom: 1px solid #21262d; font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .alert { background: #2b0d0d; border: 1px solid #f8514988; border-radius: 12px;
+           padding: 14px 18px; margin-bottom: 16px; color: #ffa198; font-size: 14px; }
+  .okline { color: #3fb950; } .badline { color: #f85149; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-weight: 500; }
+  .warn { color: #d29922; font-size: 13px; margin-top: 8px; }
+  #refresh-note { text-align: right; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>📊 实盘实况</h1>
+    <span class="badge">引擎: strategy/signal.py 共享口径</span>
+  </div>
+  <div id="app" class="muted">加载中…</div>
+</div>
+
+<script>
+const MEDALS = ["🥇", "🥈", "🥉"];
+function fmt(v, d=2) { return v === null || v === undefined ? "—" : Number(v).toFixed(d); }
+function sign(v) { return v >= 0 ? "+" : ""; }
+function cls(v) { return v >= 0 ? "pos" : "neg"; }
+
+async function load() {
+  const r = await fetch("/api/live/today");
+  const d = await r.json();
+  const app = document.getElementById("app");
+  if (!d.ok) { app.innerHTML = "<div class='panel'>⚠️ " + (d.error || "数据不可用") + "</div>"; return; }
+
+  let h = "";
+
+  // 信号横幅
+  const lv = d.suggestion_level;
+  h += `<div class="banner ${lv}">
+    <div class="sig muted">${d.date} · 今日信号: <b>${d.signal.signal}${d.signal.target ? " → " + d.signal.target : ""}</b></div>
+    <div class="act">${d.suggestion}</div>
+    ${d.signal.reason ? `<div class="reason">依据: ${d.signal.reason}</div>` : ""}
+  </div>`;
+
+  // 偏离告警
+  if (d.diverged) {
+    h += `<div class="alert">🚨 <b>持仓偏离</b>：你的实际持仓
+      <b>${d.actual_position ? d.actual_position.position : "空仓"}</b>
+      与策略仓位 <b>${d.strategy_position.position || "空仓"}</b> 不一致</div>`;
+  }
+
+  // 动量卡片
+  h += `<div class="grid">`;
+  for (const c of d.cards) {
+    h += `<div class="card">
+      <span class="medal">${MEDALS[c.rank] || ""}</span>
+      <div class="name">${c.name}</div>
+      <div class="mom ${cls(c.momentum)}">${sign(c.momentum)}${fmt(c.momentum)}%</div>
+      <div class="price">现价 ¥${fmt(c.price, 4)}</div>
+      ${c.is_strategy_pos ? '<span class="tag sim">策略仓位</span>' : ""}
+      ${c.is_actual_pos ? '<span class="tag act">实际持有</span>' : ""}
+    </div>`;
+  }
+  h += `</div>`;
+
+  // 市场环境
+  h += `<div class="panel"><h2>市场环境</h2>
+    <div class="row"><span>上证指数 20日动量</span>
+      <b class="${cls(d.sh_momentum)}">${sign(d.sh_momentum)}${fmt(d.sh_momentum)}%</b></div>
+    <div class="row"><span>纳指动量口径</span>
+      <span>${d.nz_mix_active ? "🧮 " + d.nz_note : '<span class="badline">⚠️ 降级: ' + d.nz_note + "</span>"}</span></div>
+  </div>`;
+
+  // 仓位对比
+  const sp = d.strategy_position, ap = d.actual_position;
+  h += `<div class="panel"><h2>仓位</h2>
+    <div class="row"><span>策略仓位</span><b>${sp.position || "空仓"}${sp.position ? `（自 ${sp.entry_date} 起）` : ""}</b></div>`;
+  if (ap) {
+    h += `<div class="row"><span>实际持仓</span><b>${ap.position} ${ap.shares ? ap.shares + "股" : ""}</b></div>
+    <div class="row"><span>入场</span><span>${ap.entry_date} @ ¥${fmt(ap.entry_price, 3)}</span></div>
+    <div class="row"><span>浮动盈亏</span>
+      <b class="${cls(ap.pnl_pct || 0)}">${ap.pnl_pct === null ? "—" : sign(ap.pnl_pct) + fmt(ap.pnl_pct) + "%"}</b></div>`;
+  } else {
+    h += `<div class="row"><span>实际持仓</span><b>空仓</b></div>`;
+  }
+  h += `</div>`;
+
+  // 最近操作
+  if (d.recent_actions && d.recent_actions.length) {
+    h += `<div class="panel"><h2>策略最近操作（全量回放）</h2><table>
+      <tr><th>日期</th><th>操作</th><th>依据</th></tr>`;
+    for (const a of d.recent_actions.slice().reverse()) {
+      h += `<tr><td>${a.date}</td><td>${a.old} → ${a.new}</td><td class="muted">${a.reason}</td></tr>`;
+    }
+    h += `</table></div>`;
+  }
+
+  // 对账状态
+  if (d.last_reconcile) {
+    const rc = d.last_reconcile;
+    h += `<div class="panel"><h2>每日对账</h2>
+      <div class="${rc.ok ? "okline" : "badline"}" style="white-space:pre-line;font-size:13px">${rc.message}</div>
+      <div class="muted" style="margin-top:6px;font-size:12px">${rc.ts}</div></div>`;
+  }
+
+  h += `<div id="refresh-note" class="muted">更新于 ${d.server_time} · 每 60s 自动刷新</div>`;
+  app.innerHTML = h;
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

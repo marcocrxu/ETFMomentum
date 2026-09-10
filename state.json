@@ -1,7 +1,7 @@
 {
   "position": "黄金",
-  "entry_date": "2026-08-11",
-  "entry_price": 9.016,
-  "migrated_from": "/home/ecs-user/stock-bot/momentum_state.json",
-  "note": "2026-09-11 手工校正: 用户实际持仓为 08-11 按 9.016 买入的黄金; 之前 --no-push 干跑误写了 entry_date/price, 已修复 daily_run 增加 --write-state 开关"
+  "entry_date": "2026-09-10",
+  "entry_price": 9.086,
+  "shares": 10600,
+  "note": "2026-09-11 按用户实盘成交校正: 09-09 14:51 卖出10700股@9.040, 09-10 14:54 买入10600股@9.086"
 }

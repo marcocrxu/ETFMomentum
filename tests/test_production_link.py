@@ -69,3 +69,14 @@ def test_no_duplicate_strategy_impl_in_stockbot():
         assert "sh_mom[0] > etf_max" not in src, \
             f"{path} 仍包含简化版上证空仓判断"
         assert "current_view" in src, f"{path} 未接入共享查询视图"
+
+
+def test_live_page_uses_shared_view():
+    """实盘实况页只做展示装配, 数据必须来自 live.query.current_view"""
+    app_src = open(os.path.join(ETF_DIR, "web", "app.py"), encoding="utf-8").read()
+    assert '"/live"' in app_src and '"/api/live/today"' in app_src
+    page_src = open(os.path.join(ETF_DIR, "web", "live_page.py"), encoding="utf-8").read()
+    assert "current_view" in page_src
+    # 展示层不得出现策略判断
+    for kw in ["compute_signals", "sh_mom >", "exception_gap", "min_hold"]:
+        assert kw not in page_src, f"live_page.py 不得包含策略逻辑: {kw}"

@@ -33,6 +33,8 @@
 | `live/notify.py` | 推送与归档 | 钉钉/微信发送 + **完整消息落盘** `live/notify_log.jsonl` |
 | `live/query.py` | 只读查询视图（60s 缓存） | stock-bot 的 bot 应答/HTTP API 唯一数据源，**禁止另行实现策略判断** |
 | `live/reconcile.py` | 每日对账（cron 21:30，见 §8） | 收盘回放仓位 vs 14:50 决策 vs 实际持仓 + QQQ 新鲜度，不一致即钉钉告警 |
+| `web/live_page.py` + `/live` 页 | 实盘实况页 | 今日动量/信号/操作建议/仓位对比/对账状态；纯展示装配，数据来自 `live/query.py` |
+| `state.json` | 实际持仓记录（含股数） | 从 stock-bot/momentum_state.json 迁移；成交明细记账在 `web/mytrack_data.json` |
 | `backtest/runner.py` | 独立回测 runner | 同样调 `signal.py`，被 stock-bot 复用 |
 | `strategy/engine.py` + `rules.py` + `core/` | **遗留 OO 架构，未被任何现役代码 import** | 不要改、不要依赖；改动 signal.py 不用同步它们 |
 | `audit/` | 审计脚本 + 结论 | `harness.py` 复刻 bt_runner 数据准备；`[a-f]_group.py` 各审计组；结果 `audit/out/*.json` |

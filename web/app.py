@@ -52,6 +52,17 @@ def _gate():
 def index():
     return render_template("index.html")
 
+@app.route("/live")
+def live():
+    """实盘实况页: 今日动量 + 信号 + 操作建议 + 仓位对比 (数据装配在 web/live_page.py,
+    策略口径来自 live/query.py 共享引擎, 本路由不含任何策略逻辑)"""
+    return render_template("live.html")
+
+@app.route("/api/live/today")
+def api_live_today():
+    from web.live_page import get_live_data
+    return jsonify(get_live_data())
+
 @app.route("/analysis")
 def analysis():
     return render_template("analysis.html")
