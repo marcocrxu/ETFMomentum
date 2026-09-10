@@ -74,23 +74,11 @@ def get_live_data():
             "is_actual_pos": name == actual_pos,
         })
 
-    # 今日信号与操作建议 (与 14:50 推送同一字段)
+    # 今日信号与操作建议 (与 14:50 推送同一函数, 以实际持仓为锚)
+    from live.daily_run import suggestion_for
+    suggestion, suggestion_level = suggestion_for(view, state)
     sig = view.get("signal", "HOLD")
     target = view.get("target")
-    prev_pos = view.get("prev_position", "")
-    if sig == "BUY" and target:
-        suggestion = ("卖出 %s，买入 %s" % (prev_pos, target)) if prev_pos and prev_pos != target \
-            else ("买入 %s" % target)
-        suggestion_level = "switch"
-    elif sig == "CASH":
-        suggestion = ("卖出 %s，空仓" % prev_pos) if prev_pos else "空仓"
-        suggestion_level = "cash"
-    elif sim_pos:
-        suggestion = "继续持有 %s（自 %s 起）" % (sim_pos, view.get("sim_entry_date", "?"))
-        suggestion_level = "hold"
-    else:
-        suggestion = "继续空仓观望"
-        suggestion_level = "wait"
 
     # 实际持仓盈亏
     actual = None

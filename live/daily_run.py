@@ -89,6 +89,36 @@ def save_state(st):
         json.dump(st, f, ensure_ascii=False, indent=2)
 
 
+def suggestion_for(res, state):
+    """操作建议 — 一律以【实际持仓】为锚，返回 (文本, 级别)。
+
+    2026-09-11 用户反馈: 此前按策略模拟仓位说"卖出纳指，买入黄金",
+    但用户实际从未持有纳指 —— 建议必须回答"我该怎么办", 而不是"模拟账户该怎么办"。"""
+    sig, target = res.get("signal"), res.get("target")
+    actual = state.get("position") or None
+    sim_pos = res.get("sim_position") or ""
+    entry = res.get("sim_entry_date", "?")
+
+    if sig == "BUY" and target:
+        if actual == target:
+            return ("已持有 %s，无需操作" % target, "hold")
+        if actual:
+            return ("卖出 %s，买入 %s" % (actual, target), "switch")
+        return ("买入 %s" % target, "switch")
+    if sig == "CASH":
+        if actual:
+            return ("卖出 %s，空仓" % actual, "cash")
+        return ("保持空仓", "wait")
+    # HOLD: 无新信号, 按 实际 vs 策略 对齐情况给建议
+    if actual and actual == sim_pos:
+        return ("继续持有 %s（自 %s 起）" % (actual, entry), "hold")
+    if actual and not sim_pos:
+        return ("卖出 %s，空仓（对齐策略）" % actual, "cash")
+    if not actual and sim_pos:
+        return ("买入 %s（对齐策略仓位）" % sim_pos, "switch")
+    return ("继续空仓观望", "wait")
+
+
 def build_message(res, state):
     """组装推送消息。res=LiveRunner.check() 结果, state=实际持仓。"""
     lines = ["📊 ETF 20日动量轮动 (共享引擎口径)", f"⏰ {res['date']}", ""]
@@ -116,18 +146,10 @@ def build_message(res, state):
     if reason:
         lines.append(f"    依据: {reason}")
 
-    # 操作建议 = 策略模拟仓位 (sim_pos=今日信号执行后, prev_pos=执行前)
-    if sig == "BUY" and target:
-        sell = f"卖出 {prev_pos}，" if prev_pos and prev_pos != target else ""
-        lines.append(f"🔄 操作建议: **{sell}买入 {target}**")
-    elif sig == "CASH":
-        sell = f"卖出 {prev_pos}，" if prev_pos else ""
-        lines.append(f"⚠️ 操作建议: **{sell}空仓**")
-    elif sim_pos:
-        lines.append(f"✅ 操作建议: **继续持有 {sim_pos}**"
-                     f"（自 {res.get('sim_entry_date', '?')} 起）")
-    else:
-        lines.append("⏸️ 操作建议: **继续空仓观望**")
+    # 操作建议 (以实际持仓为锚, 与 /live 页同一函数)
+    sug_text, _sug_level = suggestion_for(res, state)
+    sig_emoji = {"switch": "🔄", "cash": "⚠️", "hold": "✅", "wait": "⏸️"}[_sug_level]
+    lines.append(f"{sig_emoji} 操作建议: **{sug_text}**")
 
     # 实际持仓 vs 策略仓位偏离告警
     actual = state.get("position") or None

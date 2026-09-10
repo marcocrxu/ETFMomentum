@@ -157,7 +157,9 @@
       <span class="live-badge off" id="live-badge"><span class="dot"></span><span id="live-badge-txt">实时未启动</span></span>
     </div>
     <div style="padding:18px" id="app">
-      <div class="sec-title">📊 今日实况 <span class="sub">动量 · 信号 · 操作建议（共享引擎口径，60s 自刷）</span></div>
+      <div class="sec-title" id="live-toggle" style="cursor:pointer;user-select:none">
+        <span id="live-chevron" style="display:inline-block;transition:transform .15s">▾</span>
+        📊 今日实况 <span class="sub">动量 · 信号 · 操作建议（共享引擎口径，60s 自刷；点击标题折叠）</span></div>
       <div id="live-panel" style="margin-bottom:10px">加载中…</div>
       <div class="sec-title">📒 记账与对账 <span class="sub">手工成交记录 vs 策略净值</span></div>
       <p class="hint">记账规则：支持分批多标的。每条记录=日期+买/卖+标的+实际成交价+<b>仓位%</b>（可空=100）。买入% = 动用当前可用现金的比例；卖出% = 卖出该标的持仓的比例。同一天先卖后买都记上、顺序不限。买入价→当日收盘、昨收→卖出价的损益如实计入。</p>
@@ -168,7 +170,25 @@
 <div id="toast-wrap"></div>
 <script src="{{ url_for('static', filename='lib/echarts.min.js', v='20260821') }}"></script>
 <script src="{{ url_for('static', filename='js/live_panel.js', v='20260911') }}"></script>
-<script>LivePanel.mount("live-panel");</script>
+<script>
+// 今日实况折叠开关 (状态存 localStorage)
+(function () {
+  var key = "mytrack.livepanel.collapsed";
+  var panel = document.getElementById("live-panel");
+  var chev = document.getElementById("live-chevron");
+  function apply(collapsed) {
+    panel.style.display = collapsed ? "none" : "";
+    chev.style.transform = collapsed ? "rotate(-90deg)" : "";
+  }
+  apply(localStorage.getItem(key) === "1");
+  document.getElementById("live-toggle").addEventListener("click", function () {
+    var collapsed = panel.style.display !== "none";
+    localStorage.setItem(key, collapsed ? "1" : "0");
+    apply(collapsed);
+  });
+})();
+LivePanel.mount("live-panel");
+</script>
 <script>
 var DATA = {{ data | tojson }};
 var KEY = {{ key | tojson }};
