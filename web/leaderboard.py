@@ -23,8 +23,8 @@ from web.bt_runner import run_backtest, FEED
 
 LAST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "leaderboard_last.json")
 QUEUE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lb_queue.json")
-CUSTOM_DIR = "/root/etf_strategy/lb_custom"
-REPO_DIR = "/root/etf_strategy"
+CUSTOM_DIR = "/home/ecs-user/etf_strategy/lb_custom"
+REPO_DIR = "/home/ecs-user/etf_strategy"
 
 # 固定打榜窗口 (用户要求)
 LB_START = "2016-01-01"
@@ -312,7 +312,7 @@ def _generate(item):
    - total_ret / max_dd / ann_ret / calmar / sharpe / trade_count 也可返回, 但服务端会按 nav_log 重算,
      务必保证 nav_log 长度与 dates 一致且逐日对齐
 2. 数据来源必须用 (from data.feed import TushareFeed):
-   token 从 web.config_local import TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum",
+   token 从 web.config_local import TUSHARE_TOKEN, cache_dir="/home/ecs-user/backtest/cache/etf_momentum",
    用 get_dataframe 拉取已复权 close 日线。可用 web.bt_runner.ALL_CODES 查代码表。
 3. 回测窗口固定 2016-01-01 ~ 2026-07-31 (params 会传入 start_date/end_date, 以 params 为准)。
 4. 全部逻辑都在这一个文件里, 自包含、可 import、无交互、不要启动任何 web 服务、不修改任何其他文件。
@@ -382,7 +382,7 @@ def _execute(item):
     env.setdefault("HOME", "/root")
     script = (
         "import sys, json, importlib.util\n"
-        "sys.path.insert(0, '/root/etf_strategy')\n"
+        "sys.path.insert(0, '/home/ecs-user/etf_strategy')\n"
         "spec = importlib.util.spec_from_file_location('lb_%s', %r)\n"
         "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
         "params = {'start_date': %r, 'end_date': %r}\n"

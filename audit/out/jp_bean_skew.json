@@ -1,0 +1,242 @@
+{
+ "默认窗|基线3": {
+  "ret": 3729.95,
+  "dd": -18.08,
+  "calmar": 2.51,
+  "sharpe": 1.73,
+  "trades": 253,
+  "neg_years": 1,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "默认窗|基线3+rate_shock0.4": {
+  "ret": 4680.17,
+  "dd": -18.08,
+  "calmar": 2.7,
+  "sharpe": 1.83,
+  "trades": 246,
+  "neg_years": 1,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "默认窗|基线3+rate_shock+skew150": {
+  "ret": 5590.44,
+  "dd": -20.75,
+  "calmar": 2.48,
+  "sharpe": 1.9,
+  "trades": 233,
+  "neg_years": 1,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "默认窗|5池 条件+rate_shock": {
+  "ret": 4703.94,
+  "dd": -17.71,
+  "calmar": 2.76,
+  "sharpe": 1.82,
+  "trades": 290,
+  "neg_years": 1,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "默认窗|5池 条件+rate_shock+skew150": {
+  "ret": 5226.17,
+  "dd": -17.71,
+  "calmar": 2.85,
+  "sharpe": 1.86,
+  "trades": 280,
+  "neg_years": 1,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2015长窗|基线3": {
+  "ret": 6644.89,
+  "dd": -21.09,
+  "calmar": 2.17,
+  "sharpe": 1.66,
+  "trades": 284,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2015长窗|基线3+rate_shock0.4": {
+  "ret": 7477.67,
+  "dd": -21.09,
+  "calmar": 2.24,
+  "sharpe": 1.7,
+  "trades": 278,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2015长窗|基线3+rate_shock+skew150": {
+  "ret": 8920.65,
+  "dd": -21.09,
+  "calmar": 2.35,
+  "sharpe": 1.76,
+  "trades": 265,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2015长窗|5池 条件+rate_shock": {
+  "ret": 7515.35,
+  "dd": -21.09,
+  "calmar": 2.24,
+  "sharpe": 1.69,
+  "trades": 322,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2015长窗|5池 条件+rate_shock+skew150": {
+  "ret": 8343.21,
+  "dd": -21.09,
+  "calmar": 2.31,
+  "sharpe": 1.73,
+  "trades": 312,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2020短窗|基线3": {
+  "ret": 1121.9,
+  "dd": -19.62,
+  "calmar": 2.46,
+  "sharpe": 1.63,
+  "trades": 170,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2020短窗|基线3+rate_shock0.4": {
+  "ret": 1261.78,
+  "dd": -19.62,
+  "calmar": 2.59,
+  "sharpe": 1.7,
+  "trades": 164,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2020短窗|基线3+rate_shock+skew150": {
+  "ret": 1521.1,
+  "dd": -21.0,
+  "calmar": 2.62,
+  "sharpe": 1.79,
+  "trades": 151,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2020短窗|5池 条件+rate_shock": {
+  "ret": 1225.25,
+  "dd": -18.01,
+  "calmar": 2.78,
+  "sharpe": 1.66,
+  "trades": 204,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "2020短窗|5池 条件+rate_shock+skew150": {
+  "ret": 1369.31,
+  "dd": -18.01,
+  "calmar": 2.92,
+  "sharpe": 1.72,
+  "trades": 194,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "25/26窗|基线3": {
+  "ret": 144.93,
+  "dd": -15.94,
+  "calmar": 4.92,
+  "sharpe": 2.33,
+  "trades": 41,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "25/26窗|基线3+rate_shock0.4": {
+  "ret": 144.93,
+  "dd": -15.94,
+  "calmar": 4.92,
+  "sharpe": 2.33,
+  "trades": 41,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "25/26窗|基线3+rate_shock+skew150": {
+  "ret": 142.56,
+  "dd": -15.94,
+  "calmar": 4.85,
+  "sharpe": 2.31,
+  "trades": 40,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "25/26窗|5池 条件+rate_shock": {
+  "ret": 121.19,
+  "dd": -17.71,
+  "calmar": 3.78,
+  "sharpe": 2.04,
+  "trades": 50,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ },
+ "25/26窗|5池 条件+rate_shock+skew150": {
+  "ret": 119.05,
+  "dd": -17.71,
+  "calmar": 3.73,
+  "sharpe": 2.01,
+  "trades": 49,
+  "neg_years": 0,
+  "last": "黄金",
+  "checks": [
+   "OK"
+  ]
+ }
+}

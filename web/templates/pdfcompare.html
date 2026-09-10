@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同行策略对比 · ETF 动量轮动</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/lib/echarts.min.js"></script>
+  <script src="/static/archive_data.js"></script>
+  <style>
+    .paper { max-width: 1100px; margin: 0 auto; }
+    .paper .card { margin-bottom: 22px; }
+    .paper .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.8; }
+    .paper table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; font-size: 13px; }
+    .paper th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+    .paper th, .paper td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+    .paper .col-mine { background: rgba(76,175,80,.06); }
+    .paper .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+    .badge-ready { background: rgba(33,150,243,.15); color: #42a5f5; border: 1px solid rgba(33,150,243,.35); }
+    .badge-run { background: rgba(255,152,0,.15); color: #ff9800; border: 1px solid rgba(255,152,0,.35); }
+    .badge-ok { background: rgba(76,175,80,.15); color: var(--green); border: 1px solid rgba(76,175,80,.35); }
+    .badge-err { background: rgba(244,67,54,.15); color: var(--red); border: 1px solid rgba(244,67,54,.35); }
+    .num-pos { color: var(--green); font-weight: 600; }
+    .num-neg { color: var(--red); font-weight: 600; }
+    .errbox { background: rgba(244,67,54,.08); border: 1px solid rgba(244,67,54,.35);
+      border-radius: 8px; padding: 10px 14px; color: var(--red); font-size: 13px; margin-top: 10px; }
+    .preview-box { background: var(--surface-3); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; font-size: 12px; color: #aab0bf; line-height: 1.8; max-height: 180px;
+      overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-top: 10px; }
+    .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+      gap: 10px 22px; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 18px; margin: 10px 0; }
+    .kv div b { display: block; font-size: 16px; color: var(--text); }
+    .kv div span { font-size: 11px; color: var(--muted); }
+    .jobs-list { max-height: 260px; overflow-y: auto; }
+    .jobs-list a { display: block; padding: 7px 4px; border-bottom: 1px solid var(--border);
+      color: #c8ccd8; text-decoration: none; font-size: 13px; }
+    .jobs-list a:hover { color: var(--text); background: var(--surface-2); }
+    .file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .spin { display: inline-block; animation: rot 1s linear infinite; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="page-wrapper paper">
+  <header class="page-header">
+    <h1>🔍 同行策略对比</h1>
+    <p class="subtitle">上传同行策略 PDF → 自动提取结构 → 与我的策略逐项对比 → 可选同口径回测</p>
+  </header>
+  <nav class="page-nav">
+    <a href="/">📊 回测</a>
+    <a href="/analysis">📄 分析报告</a>
+    <a href="/pdfcompare" class="active">🔍 同行对比</a>
+    <a href="/peer/v9">🔬 vs v9 详情</a>
+    <a href="/analysis.pdf">📥 下载 PDF 报告</a>
+  </nav>
+
+  <!-- 上传 -->
+  <div class="card">
+    <div class="card-header"><h2>1 · 上传同行策略 PDF</h2></div>
+    <div style="padding:18px">
+      <div class="file-row">
+        <input type="file" id="pdf-file" accept=".pdf,application/pdf">
+        <button class="btn btn-primary" id="btn-upload">📤 上传并提取文本</button>
+      </div>
+      <p class="hint">支持 20MB 以内、含文本层的 PDF（扫描件/图片型暂不支持）。文件将存档在服务器
+        <code>web/uploads/</code>（已 gitignore），便于复看历史对比；页面与接口均受全站门禁保护。
+        分析由 kimi k3 完成，约需 1~3 分钟；「一键回测」复用打榜队列，需 5~20 分钟。</p>
+    </div>
+  </div>
+
+  <!-- 任务状态 -->
+  <div class="card" id="job-card" style="display:none">
+    <div class="card-header"><h2>2 · 任务状态</h2><div class="header-actions" id="job-actions"></div></div>
+    <div style="padding:18px">
+      <div class="kv" id="job-meta"></div>
+      <div id="job-status-line"></div>
+      <div id="job-error"></div>
+      <div class="preview-box" id="job-preview" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- 结构对比 -->
+  <div class="card" id="cmp-card" style="display:none">
+    <div class="card-header"><h2>3 · 结构对比（同行 vs 我的策略）</h2></div>
+    <div style="padding:18px" id="cmp-body"></div>
+  </div>
+
+  <!-- 一键回测 -->
+  <div class="card" id="bt-card" style="display:none">
+    <div class="card-header"><h2>4 · 同口径回测</h2>
+      <div class="header-actions"><button class="btn btn-primary" id="btn-backtest">⚡ 回测同行策略</button></div>
+    </div>
+    <div style="padding:18px" id="bt-body">
+      <p class="hint">把 LLM 提取的策略描述交给实现 agent（kimi k3）生成代码，复用打榜沙箱在固定窗口
+        2016-01-01 ~ 2026-07-31 回测，得到与我方策略同数据源、同口径的可比指标。若文档描述含糊，回测可能失败，
+        结构对比不受影响。</p>
+    </div>
+  </div>
+
+  <!-- 对比档案: 我的策略 vs v9 -->
+  <div class="card">
+    <div class="card-header"><h2>📁 对比档案 · 我的策略 vs v9（同行 PDF）— 周期分解 2014-01 ~ 2026-08</h2>
+      <div class="header-actions"><a class="btn btn-primary" href="/peer/v9">🔬 打开完整深度对比页（含过拟合审查）</a></div></div>
+    <div style="padding:18px">
+      <div id="cycle-chart" style="height:430px"></div>
+      <h3 style="margin:16px 0 8px;color:var(--accent);font-size:14px">按周期分段收益（段内累计）</h3>
+      <table id="cycle-table"></table>
+      <p class="hint" style="line-height:1.9">
+        结论：v9 全部超额里 <b>87%</b> 来自两轮牛市（2014H2-15H1 杠杆牛、2024H2-26 风险牛），
+        其余 6 段我方 4 胜、总账 +110pp。12.6 年只有 2 个"他的风格"周期、1 个"我的风格"周期，
+        样本偏向 v9，属<b>周期抽样偏差</b>而非能力差距；8 年滚动窗口不含 2014 时我方 8/10 胜。
+        双方口径：收盘成交、单边万一手续费，v9 为官方修复后代码。
+      </p>
+      <p class="hint">注：v9 至 2026-08-24 为 +15366.7%（论文口径，末 4 日持创新药 -3.9%）；
+        本表统一截到 2026-08-20 对齐我方数据。</p>
+    </div>
+  </div>
+
+  <!-- 历史 -->
+  <div class="card">
+    <div class="card-header"><h2>5 · 历史任务</h2></div>
+    <div style="padding:18px">
+      <div class="jobs-list" id="jobs-list"><span class="hint">加载中…</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const STATUS = { ready:['已上传，待解析','badge-ready'], analyzing:['⏳ 解析中…','badge-run'],
+  analyzed:['已解析','badge-ok'], backtesting:['⏳ 回测中…','badge-run'],
+  done:['✅ 回测完成','badge-ok'], failed:['❌ 失败','badge-err'] };
+let curId = null, timer = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({success:false, error:'响应解析失败'}));
+  if (!j.success) throw new Error(j.error || '请求失败');
+  return j.data;
+}
+
+// ── 上传 ──
+$('btn-upload').onclick = async () => {
+  const f = $('pdf-file').files[0];
+  if (!f) return alert('请先选择 PDF 文件');
+  $('btn-upload').disabled = true;
+  try {
+    const fd = new FormData(); fd.append('file', f);
+    const job = await api('/api/pdfcompare/upload', {method:'POST', body:fd});
+    curId = job.id;
+    renderJob(job); loadJobs();
+  } catch (e) { alert('上传失败: ' + e.message); }
+  finally { $('btn-upload').disabled = false; }
+};
+
+// ── 渲染任务 ──
+function renderJob(j) {
+  $('job-card').style.display = '';
+  $('job-meta').innerHTML =
+    `<div><b>${esc(j.filename)}</b><span>文件</span></div>` +
+    `<div><b>${j.pages} 页 / ${(j.size/1024/1024).toFixed(2)} MB</b><span>规模</span></div>` +
+    `<div><b>${j.text_len} 字符</b><span>提取文本</span></div>` +
+    `<div><b>${esc(STATUS[j.status] ? STATUS[j.status][0] : j.status)}</b><span>状态</span></div>`;
+  const st = STATUS[j.status] || [j.status, 'badge-ready'];
+  $('job-status-line').innerHTML = `<span class="badge ${st[1]}">${esc(st[0])}</span>` +
+    `<span class="hint" style="margin-left:10px">${esc(j.created)}</span>`;
+  $('job-error').innerHTML = j.error ? `<div class="errbox">${esc(j.error)}</div>` : '';
+  $('job-preview').style.display = j.preview ? '' : 'none';
+  $('job-preview').textContent = j.preview || '';
+  // 操作按钮
+  const acts = $('job-actions');
+  if (j.status === 'ready' || j.status === 'failed') {
+    acts.innerHTML = '<button class="btn btn-primary" id="btn-analyze">🧠 结构解析</button>';
+    $('btn-analyze').onclick = async () => {
+      try { await api('/api/pdfcompare/analyze', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:curId})});
+        startPoll(); } catch(e) { alert(e.message); }
+    };
+  } else acts.innerHTML = '';
+  // 结构对比
+  if (j.structure) renderCmp(j);
+  else $('cmp-card').style.display = 'none';
+  // 回测
+  if (j.status === 'analyzed' || j.status === 'done' || j.status === 'backtesting') {
+    $('bt-card').style.display = '';
+    $('btn-backtest').style.display = (j.status === 'analyzed') ? '' : 'none';
+    if (j.lb_result) renderBt(j.lb_result);
+  } else $('bt-card').style.display = 'none';
+}
+
+// ── 结构对比表 ──
+function renderCmp(j) {
+  const s = j.structure || {};
+  const M = { name:'策略名', universe:'标的池', signal:'核心信号', rebalance:'调仓频率/约束' };
+  const rows = [
+    ['策略名', s.strategy_name || '—', 'ETF 动量轮动（我的策略）'],
+    ['标的池', s.universe || '—', '纳指 513100 / 黄金 518880 / 创业板 159915，窄池 3 只'],
+    ['核心信号', s.signal || '—', '20 日相对动量排名，日频全仓 top1；纳指动量=0.3×513100+0.7×QQQ×USDCNY'],
+    ['调仓频率/约束', s.rebalance || '—', '日频；确认 2 天、最短持有 10 天、动量差≥1%；快速通道 gap≥3% 确认 2 天'],
+    ['风控', (s.risk_controls || []).join('；') || '—', '上证空仓 filter+3 天冷却；止损 -5%（相对+绝对）；加速止盈 μ+3σ；恐慌抄底 μ-2.5σ 锁 7 天；黄金止盈后冷却 3 天'],
+    ['声称指标', (s.claimed_metrics || {}).period ? `${(s.claimed_metrics||{}).period || ''}；年化 ${(s.claimed_metrics||{}).ann_ret || '未披露'}；回撤 ${(s.claimed_metrics||{}).max_dd || '未披露'}${(s.claimed_metrics||{}).calmar ? '；Calmar '+s.claimed_metrics.calmar : ''}` : '未披露',
+      '2016-07-07 ~ 2026-08-20；年化 45.51%；回撤 -18.08%；Calmar 2.52'],
+  ];
+  let h = '<table><thead><tr><th style="width:110px">项目</th><th>同行策略</th><th class="col-mine">我的策略</th></tr></thead><tbody>' +
+    rows.map(r => `<tr><td><b>${r[0]}</b></td><td>${esc(r[1])}</td><td class="col-mine">${esc(r[2])}</td></tr>`).join('') +
+    '</tbody></table>';
+  if (j.review) h += `<h3 style="margin-top:14px;color:var(--accent);font-size:14px">对比评述（kimi k3）</h3><p style="color:#c8ccd8;line-height:1.9;font-size:13.5px">${esc(j.review)}</p>`;
+  if ((s.key_insights || []).length) h += `<h3 style="margin-top:10px;font-size:14px">文档要点</h3><ul style="color:#c8ccd8;font-size:13px;line-height:1.9">${s.key_insights.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+  if ((s.gaps || []).length) h += `<h3 style="margin-top:10px;font-size:14px">⚠️ 未说明项（复现缺口）</h3><ul style="color:#ff9800;font-size:13px;line-height:1.9">${s.gaps.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+  h += '<p class="hint">注意：同行「声称指标」来自其文档，口径与我方回测未必一致；以第 4 步同口径回测为准。</p>';
+  $('cmp-body').innerHTML = h;
+  $('cmp-card').style.display = '';
+}
+
+// ── 回测结果 ──
+function renderBt(m) {
+  const fmt = (v, suf='') => v == null ? '—' : v + suf;
+  $('bt-body').innerHTML = `<table>
+    <thead><tr><th>指标</th><th>同行策略（同口径回测 2016-01-01 ~ 2026-07-31）</th><th class="col-mine">我的策略（主样本 2016-07-07 ~ 2026-08-20）</th></tr></thead>
+    <tbody>
+      <tr><td>累计收益</td><td class="num-pos">${fmt(m.total_ret, '%')}</td><td class="col-mine num-pos">3785%</td></tr>
+      <tr><td>年化收益</td><td class="num-pos">${fmt(m.ann_ret, '%')}</td><td class="col-mine num-pos">45.51%</td></tr>
+      <tr><td>最大回撤</td><td class="num-neg">${fmt(m.mdd, '%')}</td><td class="col-mine num-neg">-18.08%</td></tr>
+      <tr><td>Calmar</td><td>${fmt(m.calmar)}</td><td class="col-mine">2.52</td></tr>
+      <tr><td>Sharpe</td><td>${fmt(m.sharpe)}</td><td class="col-mine">1.73</td></tr>
+      <tr><td>交易笔数</td><td>${fmt(m.trade_count, ' 笔')}</td><td class="col-mine">253 笔</td></tr>
+    </tbody></table>
+    <p class="hint">两个窗口起止略有差异（我方主样本 2016-07-07 起、至 2026-08-20；打榜窗口固定 2016-01-01 ~ 2026-07-31），
+    且打榜口径单边成本/成交假设可能与同行原报告不同——对比时留意口径，不要直接照搬数字。</p>`;
+  $('btn-backtest').style.display = 'none';
+}
+
+$('btn-backtest').onclick = async () => {
+  try { await api('/api/pdfcompare/backtest', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:curId})});
+    startPoll(); } catch(e) { alert(e.message); }
+};
+
+// ── 轮询 ──
+function startPoll() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(async () => {
+    if (!curId) return;
+    try {
+      const j = await api('/api/pdfcompare/job/' + curId);
+      renderJob(j); loadJobs();
+      if (j.status !== 'analyzing' && j.status !== 'backtesting') { clearInterval(timer); timer = null; }
+    } catch(e) { clearInterval(timer); timer = null; }
+  }, 4000);
+}
+
+// ── 历史 ──
+async function loadJobs() {
+  try {
+    const jobs = await api('/api/pdfcompare/jobs');
+    if (!jobs.length) { $('jobs-list').innerHTML = '<span class="hint">暂无历史任务</span>'; return; }
+    $('jobs-list').innerHTML = jobs.map(j =>
+      `<a href="javascript:void 0" data-id="${esc(j.id)}">[${esc(j.status)}] ${esc(j.name || j.filename)} — ${esc(j.created)}</a>`).join('');
+    document.querySelectorAll('#jobs-list a').forEach(a => a.onclick = async () => {
+      const j = await api('/api/pdfcompare/job/' + a.dataset.id);
+      curId = j.id; renderJob(j);
+      if (j.status === 'analyzing' || j.status === 'backtesting') startPoll();
+    });
+  } catch(e) { $('jobs-list').innerHTML = `<span class="hint">${esc(e.message)}</span>`; }
+}
+// ── 对比档案图表 ──
+(function(){
+  if (typeof CYCLE_DATES === 'undefined') return;
+  const AX = {axisLine:{lineStyle:{color:'#2a3142'}}, axisLabel:{color:'#8b92a8'}};
+  const bands = CYCLE_PHASES.map((p, i) => ([
+    { xAxis: p[0], itemStyle: { color: i % 2 ? 'rgba(233,69,96,.10)' : 'rgba(66,165,245,.10)' },
+      label: { show: true, position: 'insideTopLeft', color: '#8b92a8', fontSize: 11, formatter: p[2] } },
+    { xAxis: p[1] }
+  ]));
+  const el = echarts.init(document.getElementById('cycle-chart'));
+  el.setOption({
+    backgroundColor: 'transparent', animation: false,
+    tooltip: { trigger:'axis',
+      backgroundColor:'rgba(20,24,36,.95)', borderColor:'#2a3142', textStyle:{color:'#e8eaf0'},
+      formatter: function(ps){ if(!ps || !ps.length) return ''; let h = '<b>'+ps[0].axisValue+'</b><br/>';
+        for (const p of ps) h += p.marker + p.seriesName + ': ' + p.value[1] + '×<br/>'; return h; } },
+    legend: { top: 0, textStyle:{color:'#8b92a8'} },
+    grid: { left: 64, right: 30, top: 40, bottom: 46 },
+    xAxis: Object.assign({ type:'category', data:CYCLE_DATES, boundaryGap:false,
+      axisLabel:{ color:'#8b92a8', showMaxLabel:false, interval: Math.floor(CYCLE_DATES.length/8) } }, AX),
+    yAxis: Object.assign({ type:'log', name:'净值(×, log)', logBase:10, min:0.8,
+      splitLine:{lineStyle:{color:'rgba(42,49,66,.6)'}}, nameTextStyle:{color:'#8b92a8'} }, AX),
+    series: [
+      { name:'我的策略', type:'line', data:CYCLE_MINE.map((v,i)=>[CYCLE_DATES[i],v]), showSymbol:false,
+        lineStyle:{color:'#4caf50', width:1.6}, markArea:{ silent:true, data:bands } },
+      { name:'v9', type:'line', data:CYCLE_V9.map((v,i)=>[CYCLE_DATES[i],v]), showSymbol:false,
+        lineStyle:{color:'#e94560', width:1.4, type:'dashed'} }
+    ]
+  });
+  window.addEventListener('resize', () => el.resize());
+  // 分段表
+  const PH = [
+    ['2014H1 熊末磨底','+16.2%','+4.5%','+11.7pp'],
+    ['2014H2~2015H1 第一轮牛(杠杆牛)','+85.2%','+265.9%','-180.7pp'],
+    ['2015H2~2016H1 股灾+熔断','+19.0%','+10.0%','+8.9pp'],
+    ['2016~2018-01 慢牛/价值','+18.2%','+31.9%','-13.7pp'],
+    ['2018-02~2019-01 A股熊','+43.9%','+29.7%','+14.2pp'],
+    ['2019~2021-02 结构牛','+199.7%','+124.5%','+75.2pp'],
+    ['2021-03~2024-09 长熊','+149.7%','+176.7%','-26.9pp'],
+    ['2024-10~2026-08 第二轮牛','+174.8%','+260.0%','-85.3pp'],
+    ['全周期(至2026-08-20)','+8855.5%','+15992.9%','-7137pp'],
+  ];
+  let h = '<thead><tr><th>周期段</th><th>我的策略</th><th>v9</th><th>差(我-v9)</th></tr></thead><tbody>';
+  for (const r of PH) {
+    const pos = r[3].startsWith('+');
+    h += '<tr><td>'+r[0]+'</td><td>'+(r[1].startsWith('+')?'<span class="num-pos">':'')+r[1]+(r[1].startsWith('+')?'</span>':'')+
+         '</td><td>'+(r[2].startsWith('+')?'<span class="num-pos">':'')+r[2]+(r[2].startsWith('+')?'</span>':'')+
+         '</td><td>'+(pos?'<span class="num-pos">':'<span class="num-neg">')+r[3]+'</span></td></tr>';
+  }
+  document.getElementById('cycle-table').innerHTML = h + '</tbody>';
+})();
+
+loadJobs();
+</script>
+</body>
+</html>

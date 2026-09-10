@@ -7,8 +7,8 @@ B6 冷却锚点 (最后信号日起算/天数/顺延)
 B3 止损盈亏口径 (纯代码阅读, 结论写在报告)
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy")
-sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy")
+sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np
 from strategy.signal import SignalConfig, compute_signals
 from harness import save

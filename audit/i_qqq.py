@@ -7,12 +7,12 @@
 输出: audit/out/i_qqq.json
 """
 import sys, os, json, time
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd, requests
 
 from harness import load_mats, run_cfg, base_cfg, metrics, save, trades_from_actions
 
-CACHE = "/root/etf_strategy/audit/out/qqq_usdcny.csv"
+CACHE = "/home/ecs-user/etf_strategy/audit/out/qqq_usdcny.csv"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 

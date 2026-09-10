@@ -1,0 +1,114 @@
+{
+  "全区间|gate=0.0": {
+    "total_ret": 3755.62,
+    "ann_ret": 45.15,
+    "max_dd": -18.08,
+    "sharpe": 1.72,
+    "trade_count": 253
+  },
+  "全区间|gate=5.0": {
+    "total_ret": 3341.96,
+    "ann_ret": 43.48,
+    "max_dd": -17.69,
+    "sharpe": 1.7,
+    "trade_count": 244
+  },
+  "全区间|gate=7.0": {
+    "total_ret": 3636.98,
+    "ann_ret": 44.69,
+    "max_dd": -17.69,
+    "sharpe": 1.73,
+    "trade_count": 248
+  },
+  "全区间|gate=10.0": {
+    "total_ret": 4400.94,
+    "ann_ret": 47.46,
+    "max_dd": -17.69,
+    "sharpe": 1.79,
+    "trade_count": 248
+  },
+  "2016-2019|gate=0.0": {
+    "total_ret": 195.59,
+    "ann_ret": 37.84,
+    "max_dd": -8.72,
+    "sharpe": 2.01,
+    "trade_count": 73
+  },
+  "2016-2019|gate=5.0": {
+    "total_ret": 172.17,
+    "ann_ret": 34.51,
+    "max_dd": -8.84,
+    "sharpe": 1.96,
+    "trade_count": 68
+  },
+  "2016-2019|gate=7.0": {
+    "total_ret": 181.67,
+    "ann_ret": 35.89,
+    "max_dd": -8.72,
+    "sharpe": 1.98,
+    "trade_count": 72
+  },
+  "2016-2019|gate=10.0": {
+    "total_ret": 195.59,
+    "ann_ret": 37.84,
+    "max_dd": -8.72,
+    "sharpe": 2.01,
+    "trade_count": 73
+  },
+  "2020-2022|gate=0.0": {
+    "total_ret": 175.7,
+    "ann_ret": 42.06,
+    "max_dd": -19.62,
+    "sharpe": 1.47,
+    "trade_count": 72
+  },
+  "2020-2022|gate=5.0": {
+    "total_ret": 136.04,
+    "ann_ret": 34.62,
+    "max_dd": -19.62,
+    "sharpe": 1.27,
+    "trade_count": 72
+  },
+  "2020-2022|gate=7.0": {
+    "total_ret": 137.85,
+    "ann_ret": 34.98,
+    "max_dd": -19.62,
+    "sharpe": 1.28,
+    "trade_count": 72
+  },
+  "2020-2022|gate=10.0": {
+    "total_ret": 175.7,
+    "ann_ret": 42.06,
+    "max_dd": -19.62,
+    "sharpe": 1.47,
+    "trade_count": 72
+  },
+  "2023-2026|gate=0.0": {
+    "total_ret": 363.6,
+    "ann_ret": 54.31,
+    "max_dd": -22.25,
+    "sharpe": 1.81,
+    "trade_count": 104
+  },
+  "2023-2026|gate=5.0": {
+    "total_ret": 425.84,
+    "ann_ret": 59.91,
+    "max_dd": -15.94,
+    "sharpe": 2.01,
+    "trade_count": 101
+  },
+  "2023-2026|gate=7.0": {
+    "total_ret": 447.46,
+    "ann_ret": 61.74,
+    "max_dd": -15.94,
+    "sharpe": 2.05,
+    "trade_count": 101
+  },
+  "2023-2026|gate=10.0": {
+    "total_ret": 442.07,
+    "ann_ret": 61.29,
+    "max_dd": -15.94,
+    "sharpe": 2.02,
+    "trade_count": 100
+  }
+}

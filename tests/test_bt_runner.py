@@ -8,7 +8,7 @@ pytestmark = pytest.mark.integration
 
 
 def _skip_if_no_data():
-    cache = "/root/backtest/cache/etf_momentum"
+    cache = "/home/ecs-user/backtest/cache/etf_momentum"
     if not os.path.isdir(cache) or not any(f.endswith(".csv") for f in os.listdir(cache)):
         pytest.skip("回测缓存不存在")
 

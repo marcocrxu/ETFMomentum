@@ -2,7 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, request, jsonify, render_template, abort, session
+from flask import Flask, request, jsonify, render_template, abort, session, send_from_directory
 from web.bt_runner import run_backtest
 
 app = Flask(__name__)
@@ -31,7 +31,7 @@ def _force_https():
         return ("<!DOCTYPE html><html><head><meta charset='utf-8'>"
                 "<title>🚫 HTTP 已禁用</title></head><body style='font-family:sans-serif;padding:40px'>"
                 "<h2>🚫 HTTP 通道已禁用</h2>"
-                "<p>请使用 <b>https://8.219.57.219</b> 访问。</p></body></html>", 403)
+                "<p>请使用 <b>https://121.41.49.23</b> 访问。</p></body></html>", 403)
 
 # ── 全站门禁: 必须先访问 /mytrack/<正确密钥> 解锁, 其他页面/API 才可访问 ──
 @app.before_request
@@ -45,7 +45,7 @@ def _gate():
     return ("<!DOCTYPE html><html><head><meta charset='utf-8'>"
             "<title>🔒 需要解锁</title></head><body style='font-family:sans-serif;padding:40px'>"
             "<h2>🔒 需要先访问私密对账页</h2>"
-            "<p>请用 <b>https://8.219.57.219</b> 打开私密对账页（mytrack 地址）解锁一次，"
+            "<p>请用 <b>https://121.41.49.23</b> 打开私密对账页（mytrack 地址）解锁一次，"
             "再访问本页面；http 地址会因安全策略始终无法解锁。</p></body></html>", 403)
 
 @app.route("/")
@@ -55,6 +55,68 @@ def index():
 @app.route("/analysis")
 def analysis():
     return render_template("analysis.html")
+
+@app.route("/analysis.pdf")
+def analysis_pdf():
+    """分析页 PDF 报告下载(与页面同受全站门禁保护)"""
+    p = os.path.join(app.static_folder, "analysis_report.pdf")
+    if not os.path.exists(p):
+        abort(404)
+    return send_from_directory(app.static_folder, "analysis_report.pdf",
+                               as_attachment=True,
+                               download_name="ETF策略分析报告.pdf")
+
+@app.route("/pdfcompare")
+def pdfcompare():
+    """同行策略 PDF 对比页(上传 PDF → LLM 结构解析 → 对比 → 可选一键回测)"""
+    return render_template("pdfcompare.html")
+
+@app.route("/peer/v9")
+def peer_v9():
+    """同行深度对比展示页: 我的策略 vs v9 (周期归因/组件拆解/过拟合审查 L-11)"""
+    return render_template("peer_v9.html")
+
+@app.route("/api/pdfcompare/upload", methods=["POST"])
+def api_pdfcompare_upload():
+    from web.pdfcompare import upload_pdf
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"success": False, "error": "未收到文件"}), 400
+    job, err = upload_pdf(f)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    return jsonify({"success": True, "data": job})
+
+@app.route("/api/pdfcompare/analyze", methods=["POST"])
+def api_pdfcompare_analyze():
+    from web.pdfcompare import start_analyze
+    body = request.get_json(silent=True) or {}
+    ok, err = start_analyze(body.get("id", ""))
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    return jsonify({"success": True})
+
+@app.route("/api/pdfcompare/backtest", methods=["POST"])
+def api_pdfcompare_backtest():
+    from web.pdfcompare import start_backtest
+    body = request.get_json(silent=True) or {}
+    ok, err = start_backtest(body.get("id", ""))
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    return jsonify({"success": True})
+
+@app.route("/api/pdfcompare/jobs")
+def api_pdfcompare_jobs():
+    from web.pdfcompare import list_jobs
+    return jsonify({"success": True, "data": list_jobs()})
+
+@app.route("/api/pdfcompare/job/<jid>")
+def api_pdfcompare_job(jid):
+    from web.pdfcompare import get_job
+    j = get_job(jid)
+    if j is None:
+        return jsonify({"success": False, "error": "任务不存在"}), 404
+    return jsonify({"success": True, "data": j})
 
 @app.route("/yanyan")
 def yanyan():

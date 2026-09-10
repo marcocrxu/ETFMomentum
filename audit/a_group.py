@@ -9,7 +9,7 @@ A7 σ 窗口口径审计 (扩张窗钝化: 阈值时序 + 触发频率 + ewma/pe
 B1-fix 消融 (confirm_bind_identity=True 十年对比)
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd
 from harness import bt, default_params, load_mats, run_cfg, metrics, base_cfg, save
 from strategy.signal import calc_accel_thresholds

@@ -22,3 +22,8 @@ web/lb_queue.json
 lb_custom/
 web/mytrack_combos.json
 web/app.log
+
+# 同行 PDF 对比: 上传存档 / 解析结果 / PyPDF2 依赖
+web/uploads/
+web/pdfcompare_jobs.json
+web/vendor/

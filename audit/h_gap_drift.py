@@ -5,7 +5,7 @@
       看最优档是否随时间漂移。输出: audit/out/h_gap_drift.json
 """
 import sys, os, json
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np
 
 from harness import load_mats, run_cfg, base_cfg, metrics, save

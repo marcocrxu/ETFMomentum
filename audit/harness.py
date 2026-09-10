@@ -1,6 +1,6 @@
 """审计共用 harness: 复刻 bt_runner 数据准备, 支持自定义 sh_mom 窗口/动量归一化/任意参数"""
 import sys, os, json
-sys.path.insert(0, "/root/etf_strategy")
+sys.path.insert(0, "/home/ecs-user/etf_strategy")
 import numpy as np, pandas as pd, datetime as _dt
 
 from strategy.signal import (SignalConfig, compute_signals,
@@ -10,7 +10,7 @@ from data.feed import TushareFeed
 from web.config_local import TUSHARE_TOKEN
 from web.bt_runner import ALL_CODES, run_backtest
 
-FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum")
+FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/home/ecs-user/backtest/cache/etf_momentum")
 
 BASE_UNIVERSE = "纳指,黄金,创业"
 BASE_START = "2016-07-07"
@@ -148,7 +148,7 @@ def trades_from_actions(actions, mats, user_nav):
     return trades
 
 def save(obj, name):
-    os.makedirs("/root/etf_strategy/audit/out", exist_ok=True)
-    with open(f"/root/etf_strategy/audit/out/{name}.json", "w") as f:
+    os.makedirs("/home/ecs-user/etf_strategy/audit/out", exist_ok=True)
+    with open(f"/home/ecs-user/etf_strategy/audit/out/{name}.json", "w") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1, default=str)
     print(f"saved out/{name}.json")

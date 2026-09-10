@@ -54,7 +54,7 @@ def test_submit_rejects_short_desc(monkeypatch, tmp_path):
 
 def test_safe_scan_blocks_malicious(monkeypatch):
     import web.leaderboard as lb
-    bad = "import os\nos.system('rm -rf /')\nsubprocess.run(['x'])\nopen('/root/.bashrc')\n"
+    bad = "import os\nos.system('rm -rf /')\nsubprocess.run(['x'])\nopen('/home/ecs-user/.bashrc')\n"
     assert lb._safe_scan(bad), "恶意代码应被拦截"
     good = "import numpy as np\nfrom data.feed import TushareFeed\n\ndef run(params):\n    return {}\n"
     assert lb._safe_scan(good) == [], "正常代码不应误伤"

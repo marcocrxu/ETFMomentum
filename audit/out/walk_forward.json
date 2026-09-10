@@ -1,0 +1,82 @@
+{
+ "2014-2016 外推": {
+  "default": {
+   "ret": 129.81,
+   "dd": -19.45,
+   "calmar": 1.7,
+   "sharpe": 1.21,
+   "trades": 73,
+   "negY": 1
+  },
+  "merged": {
+   "ret": 111.09,
+   "dd": -24.46,
+   "calmar": 1.2,
+   "sharpe": 1.09,
+   "trades": 74,
+   "negY": 1
+  }
+ },
+ "2014 纯外推": {
+  "default": {
+   "ret": 16.59,
+   "dd": -8.36,
+   "calmar": 2.05,
+   "sharpe": 1.07,
+   "trades": 17,
+   "negY": 0
+  },
+  "merged": {
+   "ret": 10.94,
+   "dd": -11.91,
+   "calmar": 0.95,
+   "sharpe": 0.76,
+   "trades": 21,
+   "negY": 0
+  }
+ },
+ "全窗(默认口径)": {
+  "default": {
+   "ret": 3729.95,
+   "dd": -18.08,
+   "calmar": 2.51,
+   "sharpe": 1.73,
+   "trades": 253,
+   "negY": 1
+  },
+  "merged": {
+   "ret": 3575.15,
+   "dd": -23.32,
+   "calmar": 1.92,
+   "sharpe": 1.7,
+   "trades": 256,
+   "negY": 1
+  }
+ },
+ "fitA": {
+  "mom_period": 20,
+  "stop_loss": -3.0,
+  "confirm_days": 2,
+  "crash_sigma": -2.0,
+  "exception_gap": 2.5
+ },
+ "fitB": {
+  "accel_sigma": 3.5,
+  "accel_cooldown": 2,
+  "min_hold": 20,
+  "min_gap": 1.0,
+  "nz_mom_qqq_w": 0.7
+ },
+ "merged": {
+  "mom_period": 20,
+  "stop_loss": -3.0,
+  "confirm_days": 2,
+  "crash_sigma": -2.0,
+  "exception_gap": 2.5,
+  "accel_sigma": 3.5,
+  "accel_cooldown": 2,
+  "min_hold": 20,
+  "min_gap": 1.0,
+  "nz_mom_qqq_w": 0.7
+ }
+}

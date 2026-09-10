@@ -2,7 +2,7 @@
 输出 audit/out/paper_2026.json, 供 web/templates/analysis.html (paper 版) 使用。
 只依赖 web.bt_runner.run_backtest (权威引擎)。"""
 import sys, os, json, time
-sys.path.insert(0, "/root/etf_strategy")
+sys.path.insert(0, "/home/ecs-user/etf_strategy")
 import numpy as np
 from web.bt_runner import run_backtest
 
@@ -217,8 +217,8 @@ def main():
     results["halves"] = halves
     print("halves done %.0fs" % (time.time() - t0))
 
-    os.makedirs("/root/etf_strategy/audit/out", exist_ok=True)
-    with open("/root/etf_strategy/audit/out/paper_2026.json", "w") as f:
+    os.makedirs("/home/ecs-user/etf_strategy/audit/out", exist_ok=True)
+    with open("/home/ecs-user/etf_strategy/audit/out/paper_2026.json", "w") as f:
         json.dump(clean(results), f, ensure_ascii=False, indent=1)
     print("saved audit/out/paper_2026.json  total %.0fs" % (time.time() - t0))
 

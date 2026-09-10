@@ -8,7 +8,8 @@
   买入价→当日收盘、昨收→卖出价的损益如实计入净值。
 数据文件: web/mytrack_data.json (已 gitignore)
 """
-import os, json, datetime as _dt
+import os, json, sys, threading, datetime as _dt
+import importlib.util
 import numpy as np
 import pandas as pd
 
@@ -18,7 +19,7 @@ from web.bt_runner import ALL_CODES, run_backtest
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mytrack_data.json")
 COMBOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mytrack_combos.json")
-FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum")
+FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/home/ecs-user/backtest/cache/etf_momentum")
 
 # ── 策略组合对比（可调标的池/参数，随对账页一起画图）────────────────────
 DEFAULT_COMBOS = [
@@ -319,6 +320,97 @@ IDX_CODES = {"上证指数": "000001.SH", "创业板指数": "399006.SZ",
              "深证成指": "399001.SZ", "科创50": "000688.SH"}
 
 
+# ── 同行策略 v9（实盘页对比曲线）────────────────────────────────────────
+# 规则用 backtest/v9_official 官方复现包；行情用主平台 FEED 复权缓存（跟随对账页增量刷新）。
+_V9_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "backtest", "v9_official")
+_V9_WARMUP_DAYS = 450        # v9 需 MA250/长历史预热（约 300 个交易日）
+V9_CODES = ["159915", "588080", "510300", "510500", "563300", "512400",
+            "512890", "513100", "513120", "518880", "511880"]
+# v9 代码 → 主平台 ALL_CODES 名称（实时尾点报价用；货币ETF不需要实时尾点）
+V9_CODE_TO_ALL = {"159915": "创业", "588080": "科创50", "510300": "沪深300",
+                  "510500": "中证500", "563300": "中证2000", "512400": "有色",
+                  "512890": "红利低波", "513100": "纳指", "513120": "港股创新药",
+                  "518880": "黄金", "511880": None}
+_V9_BT = None
+_V9_LOCK = threading.Lock()
+
+
+def _load_v9_backtest():
+    """按唯一模块名加载 v9 官方回测，避免与主项目 strategy 包名冲突。"""
+    global _V9_BT
+    if _V9_BT is not None:
+        return _V9_BT
+    with _V9_LOCK:
+        if _V9_BT is not None:
+            return _V9_BT
+        saved = {k: sys.modules.get(k) for k in ("market_data", "strategy", "backtest")}
+        loaded = {}
+        try:
+            for orig, unique, fname in (
+                    ("market_data", "v9_official_market_data", "market_data.py"),
+                    ("strategy", "v9_official_strategy", "strategy.py"),
+                    ("backtest", "v9_official_backtest", "backtest.py")):
+                spec = importlib.util.spec_from_file_location(
+                    unique, os.path.join(_V9_DIR, fname))
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[unique] = mod
+                sys.modules[orig] = mod          # v9 文件内部用绝对 import
+                spec.loader.exec_module(mod)
+                loaded[orig] = mod
+            _V9_BT = loaded["backtest"]
+        finally:
+            for k, old in saved.items():       # 恢复主项目模块命名空间
+                if old is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = old
+    return _V9_BT
+
+
+def _v9_histories(start_date, end_date):
+    """主平台 FEED 复权行情 → v9 histories {code: [(date, open, close, volume), ...]}。
+    open 仅为占位(v9 信号/收益只用 close+volume); volume 默认组件不使用。"""
+    ts_codes = [c + (".SZ" if c.startswith("15") else ".SH") for c in V9_CODES]
+    fetch_start = (pd.Timestamp(str(start_date)) -
+                   pd.Timedelta(days=_V9_WARMUP_DAYS)).strftime("%Y%m%d")
+    dfs = FEED.get_dataframe(ts_codes, fetch_start, str(end_date).replace("-", ""))
+    histories = {}
+    for code, ts_code in zip(V9_CODES, ts_codes):
+        df = dfs.get(ts_code)
+        if df is None or len(df) == 0:
+            return None
+        vol = df["vol"] if "vol" in df.columns else 0.0
+        histories[code] = [(str(d)[:10], float(o), float(c), float(v))
+                           for d, o, c, v in zip(df["trade_date"], df["open"],
+                                                 df["close"], vol)]
+    return histories
+
+
+def peer_v9_run(start_date, end_date):
+    """同行 v9 官方策略同窗口回放。返回 dict 或 None；position 为主平台标的名(实时用)。"""
+    try:
+        v9bt = _load_v9_backtest()
+        histories = _v9_histories(start_date, end_date)
+        if not histories:
+            return None
+        calendar = [r[0] for r in histories["510300"]]
+        res = v9bt.backtest(histories, calendar,
+                            start=str(start_date), end=str(end_date))
+        daily = res.get("daily") or []
+        if len(daily) < 2:
+            return None
+        dates = [d for d, _, _ in daily]
+        base = float(daily[0][1]) or 1.0
+        nav = [float(n) / base for _, n, _ in daily]
+        hold_code = daily[-1][2]
+        return {"name": "同行v9", "dates": dates, "nav": [round(v, 4) for v in nav],
+                "position_code": hold_code, "position": V9_CODE_TO_ALL.get(hold_code),
+                **_metrics(nav)}
+    except Exception:
+        return None
+
+
 def _vol20_of_code(code):
     """从缓存直接读某代码的 20 日波动率(日%, 复权价口径); 不触发 Tushare 拉取"""
     try:
@@ -536,13 +628,18 @@ def compute_track():
     # 当前持仓(多标的)
     open_pos = []
     last_dt = pd.Timestamp(dates[-1])
+    today = pd.Timestamp.now().normalize()
     for a, h in st["holds"].items():
         cost = sum(lp * lu for _, lp, lu in h["lots"])
         last_close = cmaps[a].get(last_dt)
         if last_close:
+            entry0 = h["lots"][0][0] if h["lots"] else None   # FIFO, 首笔剩余买入日
             open_pos.append({"asset": a, "avg_cost": round(cost / h["units"], 3),
                              "last": last_close, "units": h["units"],
                              "cost": round(cost, 2),
+                             "entry_date": entry0,
+                             "hold_days": (today - pd.Timestamp(entry0)).days if entry0 else None,
+                             "n_lots": len(h["lots"]),
                              "float_ret": round((h["units"] * last_close / cost - 1) * 100, 2),
                              "weight": round(h["units"] * last_close / st["daily"][-1][1] * 100, 1)})
 
@@ -558,6 +655,9 @@ def compute_track():
             i0, i1 = s_idx.get(t["entry_date"]), s_idx.get(t["exit_date"])
             t["strat_ret"] = (round((s_norm[i1] / s_norm[i0] - 1) * 100, 2)
                               if i0 is not None and i1 is not None else None)
+
+    # ── 同行策略 v9 同窗口对比（官方规则 + 主平台复权行情）──────────────
+    peer = peer_v9_run(dates[0], dates[-1])
 
     # ── 四大指数基准(与我的净值同窗口 rebase) ──
     benchmarks = []
@@ -610,6 +710,7 @@ def compute_track():
                  "nav_yuan": round(st["daily"][-1][1], 2),
                  "initial_cash": load_book().get("initial_cash")},
         "strat": strat,
+        "peer": peer,
         "benchmarks": benchmarks,
         "combos": combos,
         "combo_defs": combo_defs,

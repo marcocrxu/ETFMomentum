@@ -7,7 +7,7 @@ C5 停牌日回测处理 (缺口扫描 + 是否有停牌日假成交)
 C6 信号层指数化 (创业ETF vs 399006指数 动量diff + top1翻转日统计)
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd, glob, os
 from harness import FEED, bt, load_mats, ALL_CODES, save
 
@@ -18,7 +18,7 @@ adj_report = {}
 exdiv_days_all = {}
 for name in ["纳指", "黄金", "创业"]:
     code = ALL_CODES[name]
-    path = f"/root/backtest/cache/etf_momentum/{code.replace('.', '_')}.csv"
+    path = f"/home/ecs-user/backtest/cache/etf_momentum/{code.replace('.', '_')}.csv"
     df = pd.read_csv(path, parse_dates=["trade_date"])
     chg = df["adj_factor"].diff().abs() > 1e-9
     exdiv = df.loc[chg, "trade_date"].dt.strftime("%Y-%m-%d").tolist()
@@ -125,11 +125,11 @@ res["C4"] = {
 
 # ── C5: 停牌日扫描 ──
 susp = {}
-idx_dates = set(pd.read_csv("/root/backtest/cache/etf_momentum/000001_SH.csv",
+idx_dates = set(pd.read_csv("/home/ecs-user/backtest/cache/etf_momentum/000001_SH.csv",
                             parse_dates=["trade_date"])["trade_date"])
 for name in ["纳指", "黄金", "创业"]:
     code = ALL_CODES[name]
-    df = pd.read_csv(f"/root/backtest/cache/etf_momentum/{code.replace('.', '_')}.csv",
+    df = pd.read_csv(f"/home/ecs-user/backtest/cache/etf_momentum/{code.replace('.', '_')}.csv",
                      parse_dates=["trade_date"])
     missing = sorted(idx_dates - set(df["trade_date"]))
     missing = [d for d in missing if df["trade_date"].min() <= d <= df["trade_date"].max()]
@@ -137,7 +137,7 @@ for name in ["纳指", "黄金", "创业"]:
 # 停牌日假成交检查: 基线 actions 日标的价是否 NaN
 price_by = {}
 for name in ["纳指", "黄金", "创业"]:
-    df = pd.read_csv(f"/root/backtest/cache/etf_momentum/{ALL_CODES[name].replace('.', '_')}.csv",
+    df = pd.read_csv(f"/home/ecs-user/backtest/cache/etf_momentum/{ALL_CODES[name].replace('.', '_')}.csv",
                      parse_dates=["trade_date"]).set_index("trade_date")["close"]
     price_by[name] = df
 fake_fills = []

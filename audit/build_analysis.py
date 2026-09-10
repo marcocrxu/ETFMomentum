@@ -1,7 +1,7 @@
 """从 audit/out/paper_2026.json 生成 paper 版分析页 web/templates/analysis.html"""
 import json
 
-J = json.load(open("/root/etf_strategy/audit/out/paper_2026.json"))
+J = json.load(open("/home/ecs-user/etf_strategy/audit/out/paper_2026.json"))
 B = J["baseline"]
 AB = J["ablation"]
 GR = J["grids"]
@@ -228,7 +228,7 @@ HA_CHART_ASSETS = HA_ASSETS + ["合计"]
 
 # ── 加仓时机研究 (backtest/add_capital_entry.py 的结果) ──
 try:
-    CAI = json.load(open("/root/etf_strategy/backtest/add_capital_entry_result.json"))
+    CAI = json.load(open("/home/ecs-user/etf_strategy/backtest/add_capital_entry_result.json"))
 except Exception:
     CAI = None
 
@@ -922,6 +922,6 @@ const HA_COLORS = {{'创业':'#4caf50','纳指':'#42a5f5','黄金':'#facc15','�
 </html>
 """
 
-with open("/root/etf_strategy/web/templates/analysis.html", "w") as f:
+with open("/home/ecs-user/etf_strategy/web/templates/analysis.html", "w") as f:
     f.write(HTML)
 print("written web/templates/analysis.html", len(HTML), "bytes")

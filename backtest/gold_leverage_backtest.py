@@ -23,7 +23,7 @@ import tushare as ts
 from web.config_local import TUSHARE_TOKEN
 from web import bt_runner as bt
 
-CACHE = "/root/backtest/cache/etf_momentum"
+CACHE = "/home/ecs-user/backtest/cache/etf_momentum"
 pro = ts.pro_api(TUSHARE_TOKEN)
 
 def fetch_stock(code):

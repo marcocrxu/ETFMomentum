@@ -6,7 +6,7 @@
      ③输出全量结果 + top 表。数据: out/j_yanyan_combo.json
 """
 import sys, os, json, itertools, time
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd
 
 from data.feed import TushareFeed
@@ -14,7 +14,7 @@ from web.config_local import TUSHARE_TOKEN
 from strategy.yanyan import YanyanConfig, UNIVERSE, compute_yanyan
 from harness import save
 
-FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/root/backtest/cache/etf_momentum")
+FEED = TushareFeed(TUSHARE_TOKEN, cache_dir="/home/ecs-user/backtest/cache/etf_momentum")
 names = [u[0] for u in UNIVERSE]
 groups = [u[2] for u in UNIVERSE]
 codes = [u[1] for u in UNIVERSE]

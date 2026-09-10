@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同行深度对比 · 我的策略 vs v9 · ETF 动量轮动</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/lib/echarts.min.js"></script>
+  <script src="/static/archive_data.js"></script>
+  <style>
+    .paper { max-width: 1100px; margin: 0 auto; }
+    .paper .card { margin-bottom: 22px; }
+    .paper table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; font-size: 13px; }
+    .paper th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+    .paper th, .paper td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+    .paper .col-mine { background: rgba(76,175,80,.06); }
+    .num-pos { color: var(--green); font-weight: 600; }
+    .num-neg { color: var(--red); font-weight: 600; }
+    .verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 14px; }
+    .verdict .v-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+    .verdict .v-card h3 { font-size: 14px; margin: 0 0 8px; }
+    .verdict .v-card p { font-size: 13px; color: #c8ccd8; line-height: 1.85; margin: 0; }
+    .v-win h3 { color: var(--green); }
+    .v-warn h3 { color: #ff9800; }
+    .v-info h3 { color: #42a5f5; }
+    .sec { color: var(--accent); font-size: 15px; margin: 4px 0 10px; }
+    .note { font-size: 12px; color: var(--muted); line-height: 1.9; }
+    .flat { color: var(--green); font-weight: 600; }
+    .cliff { color: var(--red); font-weight: 600; }
+    ul.tight { color: #c8ccd8; font-size: 13px; line-height: 1.9; margin: 6px 0; padding-left: 20px; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper paper">
+  <header class="page-header">
+    <h1>🔬 同行深度对比 · 我的策略 vs v9</h1>
+    <p class="subtitle">同口径复现 · 周期归因 · 组件拆解 · 过拟合审查（审计档案：v9 学习消融 / L 组归因 / L-11）</p>
+  </header>
+  <nav class="page-nav">
+    <a href="/">📊 回测</a>
+    <a href="/analysis">📄 分析报告</a>
+    <a href="/pdfcompare">🔍 同行对比</a>
+    <a href="/peer/v9" class="active">🔬 vs v9 详情</a>
+  </nav>
+
+  <!-- 核心结论 -->
+  <div class="card">
+    <div class="card-header"><h2>核心结论（三句话）</h2></div>
+    <div style="padding:18px">
+      <div class="verdict">
+        <div class="v-card v-win">
+          <h3>① 同窗口我方全指标占优</h3>
+          <p>主样本窗 2016-07 ~ 2026-08：我方 <b>45.51% / -18.08% / Calmar 2.52</b>，
+             v9 <b>42.17% / -26.99% / 1.56</b>。年化、回撤、风险调整收益全胜。</p>
+        </div>
+        <div class="v-card v-warn">
+          <h3>② 近三年 v9 反超，但属周期抽样偏差</h3>
+          <p>2021-08 起样本外窗 v9 54.9%/3.73 反超我方 43.94%/2.40。归因：超额 <b>87% 来自两轮牛市 +
+             标的宽度</b>（有色/科创/2000/创新药），非行为组件可移植；8 年滚动窗不含 2014 时我方 8/10 胜。</p>
+        </div>
+        <div class="v-card v-info">
+          <h3>③ 过拟合了吗？参数层未检出，组件层强烈嫌疑，整体不可判定</h3>
+          <p>参数精确值在高原上、拟合外推不崩（低功效检验的阴性结果）；但四个组件全部按 2014-2026
+             同一窗口的历史危机逐年加入，是典型的回测驱动设计。<b>真正的样本外只有未来实盘。</b>详见 §4。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §1 多窗口指标 -->
+  <div class="card">
+    <div class="card-header"><h2>§1 · 多窗口指标对照</h2></div>
+    <div style="padding:18px">
+      <table>
+        <thead><tr><th>窗口</th><th class="col-mine">我的策略（年化/回撤/Calmar/笔数）</th><th>v9（年化/回撤/Calmar/笔数）</th><th>判读</th></tr></thead>
+        <tbody>
+          <tr><td><b>主样本窗</b><br><span class="note">2016-07-07 ~ 2026-08-20</span></td>
+              <td class="col-mine"><span class="num-pos">45.51%</span> / <span class="num-neg">-18.08%</span> / <b>2.52</b> / 253 笔</td>
+              <td>42.17% / <span class="num-neg">-26.99%</span> / 1.56 / 186 次</td>
+              <td><span class="flat">我方全胜</span></td></tr>
+          <tr><td><b>样本外窗</b><br><span class="note">2021-08 ~ 2026-08（近三年）</span></td>
+              <td class="col-mine">43.94% / <span class="num-neg">-18.34%</span> / <b>2.40</b></td>
+              <td><span class="num-pos">54.9%</span> / <span class="num-neg">-14.7%</span> / <b>3.73</b></td>
+              <td><span class="cliff">v9 反超</span>（归因见 §2）</td></tr>
+          <tr><td><b>v9 全窗</b><br><span class="note">2014-01 ~ 2026-08</span></td>
+              <td class="col-mine">—<span class="note">（我方池 159915 数据 2016 年起）</span></td>
+              <td>48.79% / <span class="num-neg">-26.99%</span> / 1.81 / 228 次</td>
+              <td>v9 官方代码复现，与论文声称值一致（+15367%/49.2%/-27.0%）</td></tr>
+        </tbody>
+      </table>
+      <p class="note">口径：收盘成交、单边万一手续费；v9 为官方修复后代码（backtest/v9_official/），数据统一截至 2026-08-20。</p>
+    </div>
+  </div>
+
+  <!-- §2 净值与周期 -->
+  <div class="card">
+    <div class="card-header"><h2>§2 · 净值对比与周期归因（2014-01 ~ 2026-08）</h2></div>
+    <div style="padding:18px">
+      <div id="cycle-chart" style="height:430px"></div>
+      <h3 class="sec" style="margin-top:16px">按周期分段收益（段内累计）</h3>
+      <table id="cycle-table"></table>
+      <p class="note" style="line-height:1.9">
+        结论：v9 全部超额里 <b>87%</b> 来自两轮牛市（2014H2-15H1 杠杆牛、2024H2-26 风险牛）；其余 6 段我方 4 胜、总账 +110pp。
+        12.6 年只有 2 个"他的风格"周期、1 个"我的风格"周期，样本偏向 v9，属<b>周期抽样偏差</b>而非能力差距；
+        8 年滚动窗口不含 2014 时我方 8/10 胜。</p>
+    </div>
+  </div>
+
+  <!-- §3 组件拆解 -->
+  <div class="card">
+    <div class="card-header"><h2>§3 · v9 组件拆解 — 逐个关闭退化到 yanyan 配置</h2></div>
+    <div style="padding:18px">
+      <table>
+        <thead><tr><th>配置（主样本窗 2016-07 ~ 2026-08）</th><th>年化</th><th>累计</th><th>Calmar</th><th>换手</th><th>组件边际</th></tr></thead>
+        <tbody>
+          <tr><td><b>v9 官方默认</b>（11 标的全组件）</td><td>42.17%</td><td>+3368%</td><td>1.56</td><td>186</td><td>—</td></tr>
+          <tr><td>→ 去恐慌抄底</td><td>38.02%</td><td>+2473%</td><td>1.41</td><td>169</td><td class="num-pos">+4.2pp（有效）</td></tr>
+          <tr><td>→ 再关急跌离场 panic 4%</td><td>32.57%</td><td>+1614%</td><td>1.17</td><td>166</td><td class="num-pos">+5.5pp（有效）</td></tr>
+          <tr><td>→ 再关熊市进场门槛 7%</td><td>30.92%</td><td>+1410%</td><td>1.11</td><td>165</td><td class="num-pos">+1.7pp（弱）</td></tr>
+          <tr><td>→ 再回 mom20/vol（去 WLS25 打分）</td><td>29.41%</td><td>+1244%</td><td>1.04</td><td>208</td><td class="num-pos">+1.5pp（弱）</td></tr>
+          <tr><td>→ 再关永不空仓（= yanyan 配置）</td><td>24.64%</td><td>+821%</td><td>0.92</td><td>242</td><td class="num-pos">+4.8pp（有效）</td></tr>
+        </tbody>
+      </table>
+      <ul class="tight">
+        <li><b>"多标的"不是 v9 好的原因</b>：同窗口窄池 3（45.51%）压着 v9（42.17%）。v9 的宽池是 regime 条件池
+            （牛 9 只 / 熊 3 只，熊市 A 股制度性离场），与 F4 纪律否决的"无条件扩池"不同。</li>
+        <li><b>组件价值环境依赖</b>：panic_drop 在窄池 3 上全窗负优化（我方学习消融），在 v9 宽池上 +5.5pp——宽池持仓常是高波动标的
+            （科创/2000），急跌=趋势破坏；窄池扛过去是更优解。照抄前必须在本引擎重做消融。</li>
+        <li><b>近三年 v9 反超主要靠宽度本身</b>（有色/科创/2000/创新药），不靠上述组件——与窄池纪律冲突，主引擎不动。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- §4 过拟合审查 -->
+  <div class="card">
+    <div class="card-header"><h2>§4 · 过拟合审查（L-11，2026-08-29）— v9 过拟合了吗？</h2></div>
+    <div style="padding:18px">
+      <h3 class="sec">⚠️ 先说检验的边界（决定结论能走多远）</h3>
+      <p class="note" style="line-height:1.9;margin-bottom:10px">
+        v9 作者的回测窗口是 <b>2014-01 起至今</b>（README 明示"回测 2014-2026"），组件逐版在窗口内迭代加入：
+        v6 急跌离场、v7 永不空仓、v8 WLS25 打分、v9 恐慌抄底——恐慌抄底的说明甚至直接写着
+        "触发年大赢（2015 +55pp、2022 +18pp、2024 +23pp）"。<b>即：2014-2016 对作者而言从来不是样本外。</b>
+        因此下面 L-11 的"2014-2016 外推"检验的是<b>贪心拟合过程</b>的稳定性
+        （从 v9 参数空间只喂 2015-2025 数据拟合，看选中参数在 2014-2016 崩不崩）：
+        它能证伪"参数精确值脆弱"，但默认参数在外推窗表现好，也可能只是因为作者本来就在含该窗的全样本上选的——
+        <b>组件/设计级的选择偏差，用同一段历史永远洗不干净；真正的样本外只有 2026-08 之后的实盘。</b></p>
+      <h3 class="sec">协议：与审我们自己 L-8 完全相同的双窗拟合 + 纯外推检验</h3>
+      <p class="note" style="margin-bottom:10px">A 组参数（恐慌/急跌/熊市门槛）在 2015-2020 贪心拟合，B 组（排名/轮动/体制）在 2020-2025 拟合，
+        整合后在<b>拟合窗从未碰过的 2014-2016</b> 外推，与 v9 默认参数对比。</p>
+      <table>
+        <thead><tr><th>检验窗</th><th>v9 默认参数（年化/Calmar）</th><th>v9 整合拟合参数（年化/Calmar）</th><th>判定</th></tr></thead>
+        <tbody>
+          <tr><td><b>2014-2016 纯外推</b></td><td>65.81% / 2.49</td><td>66.15% / 2.50</td>
+              <td><span class="flat">打平（+0.34pp）</span> — 外推不崩</td></tr>
+          <tr><td>全窗 2014-2026</td><td>48.79% / 1.81</td><td>50.88% / 1.89</td><td>拟合仅微升</td></tr>
+          <tr><td>我方主样本窗</td><td>42.17% / 1.56</td><td>44.59% / 1.65</td><td>拟合仅微升</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sec" style="margin-top:18px">证据 ②：默认参数全部落在平坦高原，无"刀刃峰"</h3>
+      <table>
+        <thead><tr><th>参数</th><th>扫描结果（全窗 年化/Calmar）</th><th>形态</th></tr></thead>
+        <tbody>
+          <tr><td>mom_main 动量周期</td><td>10→45.1/1.57 · 15→39.8/1.35 · <b>20→48.8/1.81</b> · 25→40.3/1.20 · 30→34.6/0.76</td>
+              <td><span class="flat">缓坡峰</span>，±5 天仍可用</td></tr>
+          <tr><td>buffer 排名缓冲</td><td>0→47.2 · 0.01→48.3 · <b>0.02→48.8</b> · 0.03→47.3 · 0.04→43.5</td>
+              <td><span class="flat">0~3% 全高原</span></td></tr>
+          <tr><td>bear_enter_mom 熊市门槛</td><td>0→48.3 · 0.05→48.1 · <b>0.07→48.8</b> · 0.1→48.5</td>
+              <td><span class="flat">完全平坦</span>（±全程 &lt;1pp）</td></tr>
+          <tr><td>crash_lock 抄底锁仓</td><td>3→48.1 · <b>5→48.8</b> · 7→48.9 · 10→49.4</td>
+              <td><span class="flat">平坦</span></td></tr>
+          <tr><td>panic_drop 急跌离场</td><td>0→43.9/1.53 · 0.03→49.9/1.85 · <b>0.04→48.8/1.81</b> · 0.05→46.8/1.69 · 0.06→45.5/1.58</td>
+              <td><span class="flat">缓坡</span>，默认值紧邻峰</td></tr>
+          <tr><td>overheat 过热控制</td><td>0.3→48.5 · <b>0.4→48.8</b> · 0.5→48.8 · 9.9(关)→48.8</td>
+              <td>惰性参数（无影响）</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sec" style="margin-top:18px">证据 ③：拟合值收敛回默认值</h3>
+      <p class="note">双窗拟合选出的参数与 v9 默认高度重合：mom_main=20、buffer=0.02、bear_enter=0.07、score_wls=True、never_empty=True
+        全部相同，仅 panic_drop 0.04→0.03、crash_lock 7→5 等微调。注意这<b>不能</b>反推"默认值不是事后挑的"：
+        拟合窗 2015-2025 本来就覆盖作者窗口主体，收敛回默认同样符合"默认值在全样本上被选过"的假设——两种解释不可分。</p>
+
+      <h3 class="sec" style="margin-top:18px">镜像对照的正确读法：测的是参数空间拓扑，不是谁的默认值更干净</h3>
+      <p class="note" style="margin-bottom:8px">同一协议审两边，结果相反——但严格说这不构成"谁干净"的对比：
+        L-8/L-11 测的都是"贪心拟合协议在该参数空间的行为"。v9 空间平坦 → 怎么拟合都≈默认（检验对它低功效，
+        过拟合的策略若参数面平坦也会"通过"）；我方空间有峰 → 拟合值≠默认且外推差。
+        <b>两个默认参数谁更干净，这两个实验都说了不算。</b></p>
+      <table>
+        <thead><tr><th>对象</th><th>拟合参数 2014-2016 纯外推</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td><b>v9</b></td><td>Calmar 2.50 vs 默认 2.49（打平）</td>
+              <td><span class="flat">参数值层面无过拟合迹象</span> — 参数高原 + 拟合过程外推不崩；
+                  但见上方"检验的边界"：组件设计层的选择偏差不在此检验射程内</td></tr>
+          <tr><td class="col-mine"><b>我的策略（调参流程）</b></td>
+              <td class="col-mine">Calmar 1.20 vs 默认 1.70（输 5pp 回撤更深）</td>
+              <td class="col-mine"><span class="cliff">拟合过程本身会过拟合</span> — 但反向验证了我方默认参数的泛化性
+                  （默认在未见数据上跑赢"专门拟合的"）</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9"><b>最终判定（三层 + 一个不可判定）</b>：
+        ① <b>参数精确值层</b>——未检出过拟合：参数面平坦、拟合过程外推不崩、声称值可精确复现。
+        但注意这是低功效检验下的阴性结果："没检出"≠"清白"，平坦参数面上的过拟合策略也会通过。
+        ② <b>组件设计层</b>——强烈嫌疑：v6→v9 四个组件按 2014-2026 同一窗口的历史危机逐年加入
+        （急跌离场、永不空仓、WLS25、恐慌抄底），组件数 ≈ 独立危机样本数（2015 股灾/2016 熔断/2018 熊/2020 疫情/2022 加息/2024 微盘），
+        每个组件的"卖点"就是它在某次历史危机中的收益——教科书式的回测驱动设计。
+        ③ <b>认识论层</b>——不可判定：连"v9 近三年反超"的窗口都在 v9 自己的拟合窗口内（作者窗口到 2026），
+        即<b>两方所有对比都是 in-sample vs in-sample</b>，谁都没有一寸干净的外推土地；
+        唯一准样本外锚点是 v9 的实际发布时间（未知，代码 2026-08-25 才取得）。
+        ④ <b>对称性自检</b>——我们说 v9"靠宽度=周期运气"的逻辑，镜像过来就是别人说我们"靠纳指+黄金=选池运气"
+        （窄池 F4 纪律同样在这同一段历史上验证，选池偏差未完全分解，见分析报告 §局限）。
+        单一历史路径上，能力与运气的分解有根本的不可识别性。
+        <b>可操作的结论因此不变</b>：不抄组件（已验证不可移植）、守住窄池与平台值纪律、
+        两边策略的真伪都由 2026-08 之后的实盘时间裁决。</p>
+    </div>
+  </div>
+
+  <!-- §5 结构对比 -->
+  <div class="card">
+    <div class="card-header"><h2>§5 · 策略结构对比</h2></div>
+    <div style="padding:18px">
+      <table>
+        <thead><tr><th style="width:110px">项目</th><th>v9（同行）</th><th class="col-mine">我的策略</th></tr></thead>
+        <tbody>
+          <tr><td><b>标的池</b></td><td>11 只 regime 条件池：牛市 9 只（沪深300/有色/科创/中证2000/创新药等）/ 熊市 3 只，熊市 A 股制度性离场</td>
+              <td class="col-mine">窄池 3 只固定：纳指 513100 / 黄金 518880 / 创业板 159915</td></tr>
+          <tr><td><b>核心信号</b></td><td>mom20 动量 + WLS25 加权最小二乘回归打分，vol20 风险调整</td>
+              <td class="col-mine">20 日相对动量横截面排名，日频全仓 top1；纳指动量 = 0.3×513100 + 0.7×QQQ×USDCNY 混合</td></tr>
+          <tr><td><b>调仓</b></td><td>日频，buffer 2% 排名缓冲；永不空仓（never_empty）</td>
+              <td class="col-mine">日频；确认 2 天、最短持有 10 天、动量差 ≥1%；快速通道 gap≥3%；上证空仓 filter 可全空</td></tr>
+          <tr><td><b>风控</b></td><td>恐慌抄底（mom5≤-8% 且破 MA20% 锁 5~7 天）；单日急跌 4% 离场；熊市进场门槛 7%；MA250 牛熊分界</td>
+              <td class="col-mine">上证空仓 regime filter；止损 -5%（相对+绝对）；加速止盈 mom10&gt;μ+3σ；恐慌抄底 μ-2.5σ 且 &lt;MA200 锁 7 天</td></tr>
+          <tr><td><b>成本</b></td><td>单边万一，收盘成交</td><td class="col-mine">单边万一，收盘成交（同口径）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note" style="text-align:center;margin-bottom:30px">
+    审计档案：<code>audit/审计结果清单.md</code>（v9 学习消融 · L 组归因 · L-11）｜
+    数据：<code>audit/out/v9_overfit.json</code> · <code>web/static/archive_data.js</code>｜
+    v9 官方复现包：<code>backtest/v9_official/</code>
+  </p>
+</div>
+
+<script>
+(function(){
+  if (typeof CYCLE_DATES === 'undefined') return;
+  const AX = {axisLine:{lineStyle:{color:'#2a3142'}}, axisLabel:{color:'#8b92a8'}};
+  const bands = CYCLE_PHASES.map((p, i) => ([
+    { xAxis: p[0], itemStyle: { color: i % 2 ? 'rgba(233,69,96,.10)' : 'rgba(66,165,245,.10)' },
+      label: { show: true, position: 'insideTopLeft', color: '#8b92a8', fontSize: 11, formatter: p[2] } },
+    { xAxis: p[1] }
+  ]));
+  const el = echarts.init(document.getElementById('cycle-chart'));
+  el.setOption({
+    backgroundColor: 'transparent', animation: false,
+    tooltip: { trigger:'axis',
+      backgroundColor:'rgba(20,24,36,.95)', borderColor:'#2a3142', textStyle:{color:'#e8eaf0'},
+      formatter: function(ps){ if(!ps || !ps.length) return ''; let h = '<b>'+ps[0].axisValue+'</b><br/>';
+        for (const p of ps) h += p.marker + p.seriesName + ': ' + p.value[1] + '×<br/>'; return h; } },
+    legend: { top: 0, textStyle:{color:'#8b92a8'} },
+    grid: { left: 64, right: 30, top: 40, bottom: 46 },
+    xAxis: Object.assign({ type:'category', data:CYCLE_DATES, boundaryGap:false,
+      axisLabel:{ color:'#8b92a8', showMaxLabel:false, interval: Math.floor(CYCLE_DATES.length/8) } }, AX),
+    yAxis: Object.assign({ type:'log', name:'净值(×, log)', logBase:10, min:0.8,
+      splitLine:{lineStyle:{color:'rgba(42,49,66,.6)'}}, nameTextStyle:{color:'#8b92a8'} }, AX),
+    series: [
+      { name:'我的策略', type:'line', data:CYCLE_MINE.map((v,i)=>[CYCLE_DATES[i],v]), showSymbol:false,
+        lineStyle:{color:'#4caf50', width:1.6}, markArea:{ silent:true, data:bands } },
+      { name:'v9', type:'line', data:CYCLE_V9.map((v,i)=>[CYCLE_DATES[i],v]), showSymbol:false,
+        lineStyle:{color:'#e94560', width:1.4, type:'dashed'} }
+    ]
+  });
+  window.addEventListener('resize', () => el.resize());
+  const PH = [
+    ['2014H1 熊末磨底','+16.2%','+4.5%','+11.7pp'],
+    ['2014H2~2015H1 第一轮牛(杠杆牛)','+85.2%','+265.9%','-180.7pp'],
+    ['2015H2~2016H1 股灾+熔断','+19.0%','+10.0%','+8.9pp'],
+    ['2016~2018-01 慢牛/价值','+18.2%','+31.9%','-13.7pp'],
+    ['2018-02~2019-01 A股熊','+43.9%','+29.7%','+14.2pp'],
+    ['2019~2021-02 结构牛','+199.7%','+124.5%','+75.2pp'],
+    ['2021-03~2024-09 长熊','+149.7%','+176.7%','-26.9pp'],
+    ['2024-10~2026-08 第二轮牛','+174.8%','+260.0%','-85.3pp'],
+    ['全周期(至2026-08-20)','+8855.5%','+15992.9%','-7137pp'],
+  ];
+  let h = '<thead><tr><th>周期段</th><th>我的策略</th><th>v9</th><th>差(我-v9)</th></tr></thead><tbody>';
+  for (const r of PH) {
+    const pos = r[3].startsWith('+');
+    h += '<tr><td>'+r[0]+'</td><td>'+(r[1].startsWith('+')?'<span class="num-pos">':'')+r[1]+(r[1].startsWith('+')?'</span>':'')+
+         '</td><td>'+(r[2].startsWith('+')?'<span class="num-pos">':'')+r[2]+(r[2].startsWith('+')?'</span>':'')+
+         '</td><td>'+(pos?'<span class="num-pos">':'<span class="num-neg">')+r[3]+'</span></td></tr>';
+  }
+  document.getElementById('cycle-table').innerHTML = h + '</tbody>';
+})();
+</script>
+</body>
+</html>

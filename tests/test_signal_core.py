@@ -514,6 +514,32 @@ def test_vix_gate_blocks_nz_entry():
         f"VIX 高企期间不应买纳指, 首次买入 t={entries[0][0] if entries else None}"
 
 
+def test_rate_shock_gate_blocks_nz_entry():
+    """美债利率冲击门: |10Y 20日Δ|>门槛时禁止新买纳指; 回落/关闭后恢复"""
+    from conftest import build_inputs
+    n = 400
+    prices = {"纳指": 100 * np.exp(np.cumsum(np.full(n, 0.004))),
+              "黄金": 100 * np.exp(np.cumsum(np.full(n, 0.001))),
+              "创业": 100 * np.exp(np.cumsum(np.full(n, 0.0005)))}
+    inp = build_inputs(prices, {"cyb": np.full(n, 3000.0), "sh": np.full(n, 3000.0)})
+    shock = np.where(np.arange(n) < 100, 0.5, 0.2)          # 前100天利率冲击高企
+    cfg = SignalConfig(rate_shock_gate=0.4, accel_enabled=False, sh_cash=False, crash_enabled=False)
+    actions, _, _ = compute_signals(cfg, inp["etf_names"], inp["price_mat"],
+                                    inp["mom20_mat"], inp["mom10_mat"], inp["sh_mom"],
+                                    inp["cyb_idx_p"], inp["sh_idx_p"], n,
+                                    pre_mats={"rate_shock": shock})
+    entries = [a for a in actions if a[3] in (">3%即买", "确认买入")]
+    assert entries and entries[0][0] >= 100, \
+        f"利率冲击期不应买纳指, 首次买入 t={entries[0][0] if entries else None}"
+    # 默认关闭时不拦截
+    actions0, _, _ = compute_signals(SignalConfig(accel_enabled=False, sh_cash=False, crash_enabled=False),
+                                     inp["etf_names"], inp["price_mat"], inp["mom20_mat"],
+                                     inp["mom10_mat"], inp["sh_mom"], inp["cyb_idx_p"],
+                                     inp["sh_idx_p"], n, pre_mats={"rate_shock": shock})
+    entries0 = [a for a in actions0 if a[3] in (">3%即买", "确认买入")]
+    assert entries0 and entries0[0][0] < 100, "默认关闭时不应拦截"
+
+
 def test_vix_spike_exit_sells_nz():
     """VIX 单日飙升≥阈值时清纳指"""
     from conftest import build_inputs

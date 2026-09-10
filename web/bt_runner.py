@@ -25,7 +25,7 @@ except ImportError:
     TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "")
 
 FEED = TushareFeed(TUSHARE_TOKEN,
-                    cache_dir="/root/backtest/cache/etf_momentum")
+                    cache_dir="/home/ecs-user/backtest/cache/etf_momentum")
 
 ALL_CODES = {
     "纳指":"513100.SH","黄金":"518880.SH","创业":"159915.SZ",
@@ -33,8 +33,12 @@ ALL_CODES = {
     "沪深300":"510300.SH","上证50":"510050.SH",
     "中证2000":"563300.SH","港股创新药":"513120.SH","有色":"512400.SH",
     "通信":"515880.SH","半导体":"512480.SH","红利低波":"512890.SH",
+    "中证500":"510500.SH",  # 研究用: A股宽基补池(2014-15杠杆牛主力, 数据2013-03起)
     "5年国债":"511010.SH",
     "30年国债":"511090.SH",
+    "德国30":"513030.SH",   # 华安德国30(DAX)ETF, 2014-08上市
+    "日经225":"513520.SH",  # 华安日经225ETF, 2019-06上市
+    "豆粕":"159985.SZ",     # 华夏饲料豆粕期货ETF, 2019-09上市
 }
 
 def clean_nan(obj):
@@ -125,8 +129,17 @@ def run_backtest(params):
         vix_gate=float(params.get("vix_gate", 0.0)),
         vix_spike_exit=float(params.get("vix_spike_exit", 0.0)),
         skew_gate=float(params.get("skew_gate", 0.0)),
+        rate_shock_gate=float(params.get("rate_shock_gate", 0.0)),
+        share_gate=float(params.get("share_gate", 0.0)),
+        share_window=int(params.get("share_window", 20)),
+        share_gate_names=str(params.get("share_gate_names", "")),
+        share_codes=str(params.get("share_codes", "510300,510500,510050")),
         nz_mom_qqq_on=bool(params.get("nz_mom_qqq_on", True)),
         nz_mom_qqq_w=float(params.get("nz_mom_qqq_w", 0.7)),
+        panic_drop=float(params.get("panic_drop", 0.0)),
+        bull_pool_extra=str(params.get("bull_pool_extra", "")),
+        bull_pool_rule=str(params.get("bull_pool_rule", "sh_mom20")),
+        never_empty=bool(params.get("never_empty", False)),
     )
 
     # 数据: 起始日往前拉预热天数
@@ -272,6 +285,14 @@ def run_backtest(params):
     if cfg.skew_gate > 0:
         from data.usfeed import align_fear_to_cn
         pre_mats["skew"] = align_fear_to_cn(_all_full, "skew")[_pre_days:]
+    if cfg.rate_shock_gate > 0:
+        from data.usfeed import align_ty_shock_to_cn
+        pre_mats["rate_shock"] = align_ty_shock_to_cn(_all_full)[_pre_days:]
+    if cfg.share_gate > 0:
+        # 份额风险门: 全量历史轴上构建(shift已在数据层), 再切片到决策区
+        from data.sharefeed import ShareFlowFeed
+        _codes = [c.strip() for c in cfg.share_codes.split(",") if c.strip()]
+        pre_mats["share_flow"] = ShareFlowFeed().build_flow(_all_full, _codes, cfg.share_window)[_pre_days:]
     if cfg.fip_tiebreak:
         pre_mats["up_ratio"] = calc_up_ratio20(price_mat)[:, _pre_days:]
     # cyb_p/sh_price 传完整历史序列(含预热), signal 内部用 pre_days 偏移访问,

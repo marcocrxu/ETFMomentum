@@ -5,7 +5,7 @@ F3 2018 逐月参照表 (净值+持仓)
 F4 池子规模梯度 (3/4/8/14, 时变宇宙)
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd
 from strategy.signal import SignalConfig, compute_signals
 from harness import bt, save

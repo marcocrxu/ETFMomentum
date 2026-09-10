@@ -33,6 +33,13 @@ class SignalConfig:
     nz_mom_qqq_on: bool = True       # 纳指动量混入QQQ: (1-w)×513100 + w×QQQ-CNY (默认开, 2026-08-18 用户决议; 数据准备层消费)
     nz_mom_qqq_w: float = 0.7        # QQQ 权重 (0.7 = 70% QQQ + 30% ETF)
     skew_gate: float = 0.0           # SKEW尾部风险门: SKEW>此值时禁止新买/切换纳指 (0=关闭; I-7: 150 三窗口正)
+    rate_shock_gate: float = 0.0     # 美债利率冲击门: |10Y较20个美股交易日前的Δ|>此值(pp)时禁止新买/切换纳指 (0=关闭; K-3: 0.4 三窗口正候选, 2026-08-27 研究)
+    share_gate: float = 0.0          # 份额风险门: 宽基篮子(510300/510500/510050)N日净申购率<-X%时
+                                     # 禁止新买/切换入A股标的 (0=关闭; 纳指/黄金天然豁免——QDII/商品份额
+                                     # 不含国家队信息; 份额数据2016起, T+1发布已在数据层shift)
+    share_window: int = 20           # 份额净申购率回看窗口(交易日)
+    share_gate_names: str = ""       # 份额门受限标的(逗号分隔名, 空=除纳指/黄金外全部)
+    share_codes: str = "510300,510500,510050"  # 份额信号源篮子 (沪市宽基, 数据层消费)
     fast_lane_ma: int = 0            # 快速通道追涨闸门: 挑战者现价须高于自身MA(N)才走快速通道 (0=关闭; 2026-08-17 消融为负优化默认关: 被拦切换恰是历史最优档83%胜率/均盈+4.5%; 被拦时落回慢通道=min_hold后正常切换)
     commission: float = 0.0001     # 手续费率(单边)
     slippage: float = 0.0          # 滑点/冲击成本(单边)
@@ -65,6 +72,10 @@ class SignalConfig:
                                          # False=旧语义(ti!=pos即累计, 每日轮换第一名也会计满)
     fast_min_hold: int = 0         # 快速通道(>3%切换)最短持有天数: 持仓不足N天不被例外动量差切走
                                    # (0=关闭=旧行为; 止损保护不受影响; E2候选开关, 先消融)
+    panic_drop: float = 0.0        # 单日急跌离场: 持仓单日跌幅<=-X%当日清仓/切更强候选 (0=关闭; v9式左尾保险, 2026-08-25 消融)
+    bull_pool_extra: str = ""      # 牛市附加池(标的名,逗号分隔): 仅牛市参与排名与持仓, 熊市制度性离场 (""=关闭; 学v9 regime条件池, 2026-08-25 消融)
+    bull_pool_rule: str = "sh_mom20"  # 牛市判定规则 (bull_pool_extra 配套): sh_mom20=上证20日动量>0
+    never_empty: bool = False      # 永不空仓 (v9式避险接盘): 去现金决策改持避险池(纳指/黄金)score最强, 允许负动量(跌最少者); 默认关, 2026-08-28 消融
 
 
 # 防御资产池: 空仓/防御信号触发时的候选持有标的
@@ -459,6 +470,33 @@ def compute_signals(
     sat_pos = -1; sat_alloc = 0.0; sat_hs = -1      # 分档切换组合: 卫星腿(-1=无), 权重与入场日
     actions = []
     nav_log = []
+    _extra_names = {x.strip() for x in cfg.bull_pool_extra.split(",") if x.strip()}
+    extra_idx = np.array([i for i, nm in enumerate(etf_names) if nm in _extra_names], dtype=int)
+    bull_rule = cfg.bull_pool_rule if extra_idx.size else ""
+    _sh_ma250 = pd.Series(sh_idx_p).rolling(250).mean().values if extra_idx.size else None
+    # 永不空仓避险池: 跨境+黄金 (v9 GLOBAL_POOL + GOLD)
+    safe_idx = np.array([i for i, nm in enumerate(etf_names)
+                         if nm in SH_CASH_EXEMPT_NAMES], dtype=int)
+
+    def _safe_best(t):
+        """避险池中 score 最强且数据有效者, 无则 -1 (允许负动量, 跌最少者; v9 NEVER_EMPTY 同义)"""
+        best, best_s = -1, -np.inf
+        for i in safe_idx:
+            s = score[i]
+            if not np.isnan(s) and s > best_s:
+                best, best_s = i, s
+        return best
+
+    def is_bull(t):
+        """牛市判定: sh_mom20=上证20日动量>0; sh_ma250=上证指数>其250日均线 (v9式)"""
+        if not extra_idx.size:
+            return True
+        if bull_rule == "sh_mom20":
+            return bool(sh_mom[t] > 0)
+        if bull_rule == "sh_ma250":
+            _tf = t + pre_days
+            return bool(not np.isnan(_sh_ma250[_tf]) and sh_idx_p[_tf] > _sh_ma250[_tf])
+        return True
 
     def _leg_pnl(i, entry_day, t):
         """组合仓单腿价格口径盈亏% (无入场日/价格缺失返回0)"""
@@ -512,10 +550,33 @@ def compute_signals(
     skew_arr = (pre_mats or {}).get("skew")
     if skew_arr is not None:
         skew_arr = np.asarray(skew_arr, dtype=float)
+    rate_shock_arr = (pre_mats or {}).get("rate_shock")
+    if rate_shock_arr is not None:
+        rate_shock_arr = np.asarray(rate_shock_arr, dtype=float)
 
     def _panic_block(i, t, arr, gate):
         """恐慌门: 序列值>gate 时禁止买/切该标的"""
         return bool(gate > 0 and arr is not None and not np.isnan(arr[t]) and arr[t] > gate)
+
+    # ── 份额风险门序列 (pre_mats 传入, 已按决策区对齐且 T+1 shift 无前视) ──
+    share_arr = (pre_mats or {}).get("share_flow")
+    if share_arr is not None:
+        share_arr = np.asarray(share_arr, dtype=float)
+    _share_names = {x.strip() for x in cfg.share_gate_names.split(",") if x.strip()}
+
+    def _share_block(i, t):
+        """份额风险门: 宽基篮子净申购率 < -share_gate 时禁止买/切 A 股标的。
+        纳指/黄金天然豁免 (QDII额度/商品申赎不含国家队信息);
+        序列 NaN(数据未覆盖, 2016年前) 时不拦, 优雅降级"""
+        if cfg.share_gate <= 0 or share_arr is None or np.isnan(share_arr[t]):
+            return False
+        nm = etf_names[i]
+        if _share_names:
+            if nm not in _share_names:
+                return False
+        elif nm in SH_CASH_EXEMPT_NAMES:
+            return False
+        return bool(share_arr[t] < -cfg.share_gate)
 
     # ── 快速通道追涨闸门均线 (挑战者须高于自身MA(N)才走快速通道; 优先用全量历史预计算值防冷启动,
     #    内部冷启动兜底时窗口前N-1天为NaN→闸门放行, 仅影响极短回测窗口起点) ──
@@ -672,6 +733,10 @@ def compute_signals(
             if accel_gate.any():
                 score = np.where(accel_gate, np.nan, score)
 
+        # ── 牛市附加池: 熊市时移出排名; 持有中走"牛池退出"制度性离场 ──
+        if extra_idx.size and not is_bull(t):
+            score[extra_idx] = np.nan
+
         sv = ~np.isnan(score)
         ti = int(np.argmax(np.where(sv, score, -np.inf))) if sv.any() else ti_raw
         # 候选全被冷却时 ti 回退为原始动量第一(本身在冷却期): 禁止向其切换/买入,
@@ -694,7 +759,10 @@ def compute_signals(
                   if nm not in SH_CASH_EXEMPT_NAMES and vm[i]]
             sc = (sh_mom[t] > max(ne)) if ne else False
         elif cfg.sh_cash:
-            sc = sh_mom[t] > np.nanmax(ms)
+            _ms_c = ms.copy()
+            if extra_idx.size and not is_bull(t):
+                _ms_c[extra_idx] = np.nan
+            sc = sh_mom[t] > np.nanmax(_ms_c)
         else:
             sc = False
         sw = False; reason = ""; accel_exit = False
@@ -882,6 +950,10 @@ def compute_signals(
                     actions.append((t, sat, ti, "卫星追新"))
                     sat_pos = ti; sat_hs = t
                     streak = 0
+        elif (extra_idx.size and pos >= 0 and pos in extra_idx
+                and not is_bull(t) and t >= crash_held_until):
+            # 熊市确立: 牛池标的制度性离场 (学v9: A股池受regime约束, 熊市无条件撤)
+            sw = True; np_pos = -1; streak = 0; reason = "牛池退出"
         elif pos == -1:
             if t < sh_cash_block_until:
                 pass  # 空仓冷却期内, 禁止再入场 (恐慌抄底走独立分支, 不受影响)
@@ -895,8 +967,11 @@ def compute_signals(
                     pass  # 趋势门: 候选低于自身长均线, 保持空仓
                 elif (etf_names[ti] == "纳指" and (
                         _panic_block(ti, t, vix_arr, cfg.vix_gate)
-                        or _panic_block(ti, t, skew_arr, cfg.skew_gate))):
-                    pass  # VIX/SKEW恐慌门: 美股恐慌期不新买纳指
+                        or _panic_block(ti, t, skew_arr, cfg.skew_gate)
+                        or _panic_block(ti, t, rate_shock_arr, cfg.rate_shock_gate))):
+                    pass  # VIX/SKEW/美债利率冲击门: 美股恐慌期不新买纳指
+                elif _share_block(ti, t):
+                    pass  # 份额风险门: 宽基篮子净赎回期不新买A股标的
                 elif lm >= cfg.cash_skip_gt and not np.isnan(lm):
                     sw = True; np_pos = ti; streak = 0; reason = ">3%即买"
                 elif streak >= cfg.confirm_days:
@@ -921,7 +996,12 @@ def compute_signals(
                 _ma = ma_gate_mat[ti, t]
                 if not np.isnan(_px) and not np.isnan(_ma) and _px <= _ma:
                     fast_gap = False
-            if pnl <= stop_line(pos, t):
+            if cfg.panic_drop > 0:
+                _p0 = price_mat[pos, max(0, t - 1)]; _p1 = price_mat[pos, t]
+                if (not np.isnan(_p0) and not np.isnan(_p1) and _p0 > 0
+                        and (_p1 / _p0 - 1) * 100 <= -cfg.panic_drop):
+                    sw = True; np_pos = ti; streak = 0; reason = "单日急跌"
+            if not sw and pnl <= stop_line(pos, t):
                 sw = True; np_pos = ti; streak = 0; reason = "止损"
             elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:
                 pass  # 排名缓冲: 持仓仍在前N名, 不切换
@@ -929,8 +1009,11 @@ def compute_signals(
                 pass  # 趋势门: 候选低于自身长均线, 不切换
             elif (etf_names[ti] == "纳指" and (
                     _panic_block(ti, t, vix_arr, cfg.vix_gate)
-                    or _panic_block(ti, t, skew_arr, cfg.skew_gate))):
-                pass  # VIX/SKEW恐慌门: 美股恐慌期不切向纳指
+                    or _panic_block(ti, t, skew_arr, cfg.skew_gate)
+                    or _panic_block(ti, t, rate_shock_arr, cfg.rate_shock_gate))):
+                pass  # VIX/SKEW/美债利率冲击门: 美股恐慌期不切向纳指
+            elif _share_block(ti, t):
+                pass  # 份额风险门: 宽基篮子净赎回期不切向A股标的
             elif fast_gap and met and hd >= cfg.fast_min_hold:
                 if (cfg.fast_lane_staged and cfg.fast_full_gap > cfg.exception_gap
                         and gap < cfg.fast_full_gap):
@@ -950,12 +1033,31 @@ def compute_signals(
             # 有更优候选时走上面的"止损"切换; 无候选可切时清到空仓,
             # 不再硬扛 (2026-06 纳指 -9.79% 远超 -5% 线的成因)
             sw = True; np_pos = -1; streak = 0; reason = "绝对止损"
+        elif cfg.panic_drop > 0 and pos >= 0 and t >= crash_held_until:
+            _p0 = price_mat[pos, max(0, t - 1)]; _p1 = price_mat[pos, t]
+            if (not np.isnan(_p0) and not np.isnan(_p1) and _p0 > 0
+                    and (_p1 / _p0 - 1) * 100 <= -cfg.panic_drop):
+                sw = True; np_pos = -1; streak = 0; reason = "单日急跌"
         elif (cfg.accel_enabled and pos >= 0
                 and etf_names[pos] not in {x.strip() for x in cfg.accel_exempt_names.split(",") if x.strip()}
                 and not np.isnan(accel_th_mat[pos, t])
                 and mom10_mat[pos, t] > accel_th_mat[pos, t]):
             sw = True; np_pos = -1; streak = 0; reason = "加速止盈"
             accel_exit = True
+
+        # ── 永不空仓 (v9式避险接盘, 默认关): 去现金决策 → 改持避险池 score 最强 ──
+        # 覆盖: 上证空仓/绝对动量门/牛池退出/绝对止损/加速止盈/VIX异动/单日急跌 → 原为现金;
+        # 空仓无候选时主动买入避险池; 抄底锁仓期内的止损退出不拦截 (保留锁仓语义)
+        if cfg.never_empty and safe_idx.size and t >= crash_held_until:
+            _si = _safe_best(t)
+            if sw and np_pos == -1 and reason != "止损":
+                if _si >= 0:
+                    if _si == pos:
+                        sw = False; reason = ""
+                    else:
+                        np_pos = _si; reason = "避险接盘(%s)" % reason
+            elif not sw and pos == -1 and _si >= 0:
+                sw = True; np_pos = _si; streak = 0; reason = "避险接盘"
 
         if sw:
             cost = cfg.commission + cfg.slippage

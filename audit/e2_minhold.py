@@ -4,7 +4,7 @@
          持仓满N天后若 gap 仍 >=3% 且确认计数满足, 再切。
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, json
 from harness import load_mats, run_cfg, base_cfg, metrics, trades_from_actions, save
 

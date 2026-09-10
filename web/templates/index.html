@@ -16,6 +16,7 @@
     <nav class="page-nav">
       <a href="/" class="active">📊 回测</a>
       <a href="/analysis">🔬 策略分析</a>
+      <a href="/pdfcompare">🔍 同行对比</a>
       <a href="/yanyan">🛡️ yanyan</a>
       <a href="/leaderboard">🏆 打榜</a>
     </nav>
@@ -78,6 +79,11 @@
         <div class="param-group">
           <label class="group-label" title="SKEW>此值时禁止新买/切换纳指 (尾部风险, 0=关闭, 研究建议150)">SKEW尾部风险门</label>
           <input id="skew_gate" type="number" value="0" min="0" step="5">
+        </div>
+
+        <div class="param-group">
+          <label class="group-label" title="|10Y美债较20个美股交易日前的Δ|>此值(pp)时禁止新买/切换纳指 (利率冲击门, 0=关闭, 研究建议0.4; K-3候选: 三窗口正但25/26惰性)">美债利率冲击门</label>
+          <input id="rate_shock_gate" type="number" value="0" min="0" step="0.05">
         </div>
 
         <div class="param-group">

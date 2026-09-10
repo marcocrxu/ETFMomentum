@@ -11,7 +11,7 @@ from data.feed import TushareFeed
 class LiveRunner:
     def __init__(self, cfg: SignalConfig, feed: TushareFeed,
                  name_to_code: Dict[str, str],
-                 state_file: str = "/root/etf_strategy/state.json"):
+                 state_file: str = "/home/ecs-user/etf_strategy/state.json"):
         self.cfg = cfg
         self.feed = feed
         self.name_to_code = name_to_code
@@ -22,47 +22,69 @@ class LiveRunner:
             "创业指": "s_sz399006",
         }
 
-    def check(self) -> dict:
-        if not self._is_trade_day():
+    # 与 bt_runner 完全同口径的历史窗口: 决策区起点 + 320 日历天预热
+    # (2026-09-11 实测: 此前实盘从决策区起点开始取数, 上证/创业指数历史比回测短,
+    #  MA200/恐慌阈值/加速止盈阈值的 expanding 窗口不同 → 历史操作日期差 1 天)
+    DECISION_START = "2016-07-07"
+    WARMUP_DAYS = 320   # = bt_runner._warmup 下限 (保证 MA200 在决策起点就绪)
+
+    def check(self, require_trade_day=True) -> dict:
+        if require_trade_day and not self._is_trade_day():
             return {"signal": "非交易日"}
 
         today = datetime.now().strftime("%Y-%m-%d")
         end = today.replace("-", "")
-        start_all = "20160707"
+        fetch_start = (pd.Timestamp(self.DECISION_START)
+                       - pd.Timedelta(days=self.WARMUP_DAYS)).strftime("%Y%m%d")
 
         etf_names = list(self.name_to_code.keys())
         codes = list(self.name_to_code.values()) + ["000001.SH", "399006.SZ"]
 
         # 加载历史数据（对齐日期）
-        dfs = self.feed.get_dataframe(codes, start_all, end)
+        dfs = self.feed.get_dataframe(codes, fetch_start, end)
         if len(dfs) < 3:
             return {"error": "数据加载失败"}
 
-        all_dates = sorted(set().union(*[set(df["trade_date"]) for df in dfs.values()]))
+        # 截断到 [fetch_start, today] (缓存可能返回更早的数据, 与 bt_runner 同处理)
+        _fs_ts = pd.Timestamp(fetch_start)
+        today_ts = pd.Timestamp(today)
+        for code in list(dfs.keys()):
+            df = dfs[code]
+            df = df[(df["trade_date"] >= _fs_ts) & (df["trade_date"] <= today_ts)]
+            if len(df) == 0:
+                del dfs[code]
+            else:
+                dfs[code] = df.reset_index(drop=True)
+
+        # 全量时间轴 (预热段 + 决策区)
+        all_full = sorted(set().union(*[set(df["trade_date"]) for df in dfs.values()]))
 
         # 盘中运行时缓存最后一行是昨天: 为今天追加新行
         # (此前用实时价直接覆盖最后一行, 导致昨收从序列中消失、动量窗口错位)
-        today_ts = pd.Timestamp(today)
-        if not all_dates or all_dates[-1] < today_ts:
-            all_dates.append(today_ts)
+        if not all_full or all_full[-1] < today_ts:
+            all_full.append(today_ts)
+        n_full = len(all_full)
+        pre_days = next((i for i, d in enumerate(all_full)
+                         if d >= pd.Timestamp(self.DECISION_START)), 0)
+        all_dates = all_full[pre_days:]      # 决策区
         n = len(all_dates)
 
-        # 构建价格数组
+        # 构建价格数组 (全量)
         prices = {}
         for name, code in self.name_to_code.items():
             if code not in dfs: continue
             s = dfs[code].set_index("trade_date")["close"]
-            prices[name] = np.array([s.get(d, np.nan) for d in all_dates])
+            prices[name] = np.array([s.get(d, np.nan) for d in all_full])
         sh_s = dfs["000001.SH"].set_index("trade_date")["close"]
-        sh_price = np.array([sh_s.get(d, np.nan) for d in all_dates])
+        sh_price = np.array([sh_s.get(d, np.nan) for d in all_full])
 
-        cyb_p = np.full(n, np.nan)
+        cyb_p = np.full(n_full, np.nan)
         if "399006.SZ" in dfs:
             s = dfs["399006.SZ"].set_index("trade_date")["close"]
-            cyb_p = np.array([s.get(d, np.nan) for d in all_dates])
+            cyb_p = np.array([s.get(d, np.nan) for d in all_full])
         sh_p = sh_price.copy()
 
-        price_mat = np.array([prices.get(nm, np.full(n, np.nan)) for nm in etf_names])
+        price_mat = np.array([prices.get(nm, np.full(n_full, np.nan)) for nm in etf_names])
 
         # 实时价格写入今日行
         live = self._get_live_prices()
@@ -75,13 +97,13 @@ class LiveRunner:
         if "创业指" in live and live["创业指"] > 0:
             cyb_p[-1] = live["创业指"]
 
-        # 动量
+        # 动量 (全量历史上计算, 切片进决策区 —— 与 bt_runner 同口径)
         def momentum(arr, w, s=0):
-            m = np.full(n, np.nan)
+            m = np.full(n_full, np.nan)
             if s <= 0:
                 m[w:] = (arr[w:] / arr[:-w] - 1) * 100
             else:
-                m[w+s:] = (arr[w:n-s] / arr[:n-w-s] - 1) * 100
+                m[w+s:] = (arr[w:n_full-s] / arr[:n_full-w-s] - 1) * 100
             return m
 
         _skip = self.cfg.mom_skip
@@ -90,24 +112,42 @@ class LiveRunner:
         sh_mom = momentum(sh_price, 20)
 
         # ── 纳指动量混入 QQQ-CNY (默认开; w=QQQ权重, 0.7=70%QQQ+30%ETF; 与回测同口径) ──
+        nz_mix_active = False
+        nz_note = ""
         if getattr(self.cfg, "nz_mom_qqq_on", True) and "纳指" in etf_names:
             try:
-                from data.usfeed import load_qqq_cny, align_to_cn
+                from data.usfeed import load_qqq_cny, align_to_cn, qqq_cny_freshness
+                # 陈旧数据必须回退: ffilled 的陈旧 QQQ 会污染纳指动量
+                # (2026-09-09 空仓信号丢失事故: CSV 断更后静默降级, 无人察觉)
+                _last, _expect, _fresh = qqq_cny_freshness()
+                if not _fresh:
+                    raise RuntimeError("QQQ-CNY 数据陈旧: 最新%s, 期望≥%s"
+                                       % (_last.date(), _expect.date()))
                 _w = min(max(float(getattr(self.cfg, "nz_mom_qqq_w", 0.7)), 0.0), 1.0)
-                _qq = align_to_cn(all_dates, load_qqq_cny())
-                _qq = pd.Series(_qq).ffill().values
+                _qq = align_to_cn(all_full, load_qqq_cny())
                 _nz = etf_names.index("纳指")
                 _qm20 = momentum(_qq, 20, _skip)
                 _qm10 = momentum(_qq, 10)
                 mom20_mat[_nz] = (1 - _w) * mom20_mat[_nz] + _w * _qm20
                 mom10_mat[_nz] = (1 - _w) * mom10_mat[_nz] + _w * _qm10
+                nz_mix_active = True
+                nz_note = "%.1f×QQQ-CNY(%+.2f%%) + %.1f×513100" % (
+                    _w, _qm20[-1] if not np.isnan(_qm20[-1]) else 0.0, 1 - _w)
             except Exception as e:
+                nz_note = "回退纯ETF: %s" % e
                 print("QQQ混合失败(回退ETF动量): %s" % e)
 
-        # 调用共享信号函数
+        # 调用共享信号函数 — 切片进决策区, cyb/sh 传全量历史 + pre_days,
+        # accel 阈值全量预计算后切片 (与 bt_runner 完全同口径, 杜绝冷启动差异)
+        from strategy.signal import calc_accel_thresholds, calc_vol20
+        pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, self.cfg)[:, pre_days:]}
+        if self.cfg.stop_sigma > 0 or self.cfg.risk_adj_mom or self.cfg.vol_scale_target > 0:
+            pre_mats["vol"] = calc_vol20(price_mat)[:, pre_days:]
         actions, _, _ = compute_signals(
-            self.cfg, etf_names, price_mat, mom20_mat, mom10_mat,
-            sh_mom, cyb_p, sh_p, n
+            self.cfg, etf_names,
+            price_mat[:, pre_days:], mom20_mat[:, pre_days:], mom10_mat[:, pre_days:],
+            sh_mom[pre_days:], cyb_p, sh_p, n,
+            pre_days=pre_days, pre_mats=pre_mats
         )
 
         # 只有发生在今日(最后一行)的 action 才是今天的信号
@@ -120,6 +160,31 @@ class LiveRunner:
             _, old_p, new_p, reason = last_action
             if new_p >= 0: signal = "BUY"; target = etf_names[new_p]
             elif old_p >= 0: signal = "CASH"
+
+        # ── 策略模拟仓位: 全量回放的权威结果 (与实际持仓 state 分开,
+        #    两者不一致 = 用户没跟上信号, daily_run 要在推送里告警) ──
+        sim_pos = -1; sim_entry_idx = -1; sim_entry_price = 0.0
+        prev_pos = -1           # 今日信号执行前的仓位 (操作建议"卖出X"用)
+        for (t, _o, new_p, _r) in actions:
+            if t == n - 1:
+                prev_pos = sim_pos
+            sim_pos = new_p
+            if new_p >= 0:
+                sim_entry_idx = t
+                _ep = price_mat[new_p, pre_days + t]   # t 是决策区索引, price_mat 是全量
+                sim_entry_price = float(_ep) if not np.isnan(_ep) else 0.0
+        if not actions or actions[-1][0] != n - 1:
+            prev_pos = sim_pos
+        sim_position = etf_names[sim_pos] if sim_pos >= 0 else ""
+        prev_position = etf_names[prev_pos] if prev_pos >= 0 else ""
+        sim_entry_date = str(all_dates[sim_entry_idx])[:10] if sim_entry_idx >= 0 else ""
+        recent_actions = [
+            {"date": str(all_dates[t])[:10],
+             "old": etf_names[o] if o >= 0 else "空仓",
+             "new": etf_names[nw] if nw >= 0 else "空仓",
+             "reason": rr}
+            for (t, o, nw, rr) in actions[-5:]
+        ]
 
         # 持仓盈亏
         pnl = 0; hold_days = 0; position = ""
@@ -145,10 +210,21 @@ class LiveRunner:
                 name: round(mom20_mat[i, -1], 2) if not np.isnan(mom20_mat[i, -1]) else 0
                 for i, name in enumerate(etf_names)
             },
+            # ── 以下为对账/告警新增字段 ──
+            "sim_position": sim_position,          # 策略全量回放的当前应持仓位 (""=空仓)
+            "prev_position": prev_position,        # 今日信号执行前的策略仓位
+            "sim_entry_date": sim_entry_date,
+            "sim_entry_price": sim_entry_price,
+            "recent_actions": recent_actions,       # 最近5条回放操作 (对账用)
+            "nz_mix_active": nz_mix_active,         # 纳指 QQQ 混合是否生效
+            "nz_note": nz_note,
+            "live_prices": {k: v for k, v in live.items()},
         }
 
     def execute_and_notify(self) -> str:
-        """cron 模式: 执行操作 + 推送钉钉/微信"""
+        """[遗留] cron 模式: 执行操作 + 推送钉钉/微信。
+        注意: 生产入口已迁移到 live/daily_run.py (完整消息落盘+对账),
+        本方法仅供旧调用方兼容, 新代码请用 daily_run.main()。"""
         result = self.check()
         if "error" in result:
             return result["error"]
@@ -171,7 +247,7 @@ class LiveRunner:
 
         # 钉钉
         try:
-            import sys; sys.path.insert(0, "/root/stock-bot")
+            import sys; sys.path.insert(0, "/home/ecs-user/stock-bot")
             from services.dingtalk_service import send_text
             send_text(msg)
             print("钉钉: OK")
@@ -180,8 +256,8 @@ class LiveRunner:
 
         # 微信
         try:
-            wu_file = "/root/stock-bot/wechat_user.json"
-            bs_file = "/root/stock-bot/bot_session.json"
+            wu_file = "/home/ecs-user/stock-bot/wechat_user.json"
+            bs_file = "/home/ecs-user/stock-bot/bot_session.json"
             if os.path.exists(wu_file) and os.path.exists(bs_file):
                 with open(wu_file) as f: wu = json.load(f)
                 with open(bs_file) as f: bs = json.load(f)

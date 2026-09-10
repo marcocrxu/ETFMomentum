@@ -27,14 +27,19 @@
 | `web/bt_runner.py` | 回测编排（454 行） | `run_backtest(params)` → JSON（含图 base64、decisions、热力图） |
 | `web/app.py` | Flask 路由 | 端口 **8082**（注意：CLAUDE.md 写的 8080 已过时）；`/mytrack/<key>` 私密对账页 |
 | `web/mytrack.py` | 实盘对账：手工记账 → 实盘净值 vs 策略同窗口 | 数据在 `web/mytrack_data.json`（已 gitignore） |
-| `live/runner.py` | 实盘 runner（cron 14:50） | 腾讯实时价写今日行 → 调 `compute_signals` → 钉钉/微信推送 |
+| `web/pdfcompare.py` | 同行策略 PDF 对比（2026-08-25 新增） | 上传 PDF 落盘 `web/uploads/`(gitignore) → PyPDF2 提取 → claude(kimi k3) 结构化解析 → 对比表；「一键回测」复用 leaderboard 队列。任务存档 `web/pdfcompare_jobs.json`(gitignore) |
+| `live/daily_run.py` | **生产实盘唯一入口（cron 14:50）** | 刷新 QQQ → LiveRunner → 推送 → 完整落盘 → 更新实际持仓。生产口径 = `SignalConfig()` 全默认值；`--no-push` 干跑不写状态 |
+| `live/runner.py` | 实盘 runner（被 daily_run 调用） | 腾讯实时价写今日行 → 调 `compute_signals`（320天预热+pre_days+pre_mats，与 bt_runner 逐位一致，2026-09-11 实测同输入同输出） |
+| `live/notify.py` | 推送与归档 | 钉钉/微信发送 + **完整消息落盘** `live/notify_log.jsonl` |
+| `live/query.py` | 只读查询视图（60s 缓存） | stock-bot 的 bot 应答/HTTP API 唯一数据源，**禁止另行实现策略判断** |
+| `live/reconcile.py` | 每日对账（cron 21:30，见 §8） | 收盘回放仓位 vs 14:50 决策 vs 实际持仓 + QQQ 新鲜度，不一致即钉钉告警 |
 | `backtest/runner.py` | 独立回测 runner | 同样调 `signal.py`，被 stock-bot 复用 |
 | `strategy/engine.py` + `rules.py` + `core/` | **遗留 OO 架构，未被任何现役代码 import** | 不要改、不要依赖；改动 signal.py 不用同步它们 |
 | `audit/` | 审计脚本 + 结论 | `harness.py` 复刻 bt_runner 数据准备；`[a-f]_group.py` 各审计组；结果 `audit/out/*.json` |
 | `tests/` | pytest，**全合成数据、无需网络** | 29 个测试全绿；`integration` marker 留给需 tushare 的测试 |
 | `web/config_local.py` | 本地私密配置（gitignore） | `TUSHARE_TOKEN`、`MYTRACK_KEY` |
 
-**共享缓存目录**：`/root/backtest/cache/etf_momentum/`（web、mytrack、audit harness 都指向这里）。`/root/stock-bot` 是关联的实盘 bot 项目（live/runner.py 推送时依赖它）。
+**共享缓存目录**：`/home/ecs-user/backtest/cache/etf_momentum/`（web、mytrack、audit harness、live 都指向这里）。`/home/ecs-user/stock-bot` 是关联的实盘 bot 项目（`live/notify.py` 推送依赖它的钉钉/微信服务与 .env）。
 
 ## 4. 核心数据流（改代码前必懂）
 
@@ -110,7 +115,8 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 | vix_gate / vix_spike_exit (VIX恐慌门) | 0(关) | gate=25 候选 | 2026-08-18 I-6：gate=25 三窗口微正(+73/+59/+274pp)；异动离场否决(卖在恐慌底)；gate=20 阈值敏感 |
 | accel_cooldown / gold_only (止盈冷却) | **3 / True (默认开)** | ✅ 已默认开 | 2026-08-18 用户决议 I-17：黄金止盈后3天不买回；新默认基线 3729.95/2.51 (2026-08-21 数据修复后重标定)，25/26 +16pp |
 | skew_gate (SKEW尾部风险门) | 0(关) | 150 候选 | 2026-08-18 I-7：SKEW>150 三窗口正(+288/+233/+418pp, Calmar +0.04~0.05)，优于VIX门；10Y-3M倒挂门否决 |
-| vix_gate+skew_gate 组合 | 0(关) | 25+150 候选 | 2026-08-18 I-8：组合三窗口 Calmar 全+0.10 (2.19/2.11/2.02)，收益+458~1012pp，大于单门之和，最强恐慌门候选 |
+| vix_gate+skew_gate 组合 | 0(关) | 候选降级 | 2026-08-27 K-4：纯ETF口径最强(2.19)，但 QQQ 0.7 默认口径下已失效(-46pp, Calmar 2.18<2.51, DD 反而 -20.75)；QQQ混合已吸收其择时信息 |
+| rate_shock_gate (美债利率冲击门, |10Y 20dΔ|>0.4pp 禁新买/切纳指) | **0 (关, 已入引擎+UI)** | 候选留档 | 2026-08-27 K-3：三窗口正(+950/+833/+140pp, Calmar 2.70/2.24/2.59, DD不变, 门0.4经bt_runner=4680.17)；被拦7笔直接效应≈-10pp, 大头路径级联；25/26完全惰性；实盘未接入(需treasury.csv刷新cron)；10Y-1Y倒挂门/水平门否决(K-1/K-2) |
 | nz_mom_qqq_on/w (纳指动量混入QQQ-CNY) | **on=True / w=0.7 (QQQ权重)** | ✅ 已默认开 | 2026-08-18 用户决议 I-11：混合 vs 纯ETF 3729.95/2.51 vs 3058.85/1.98 (2026-08-21 数据修复后口径)；w=0.7=70%QQQ+30%ETF；精确值不可迁移勿再调优 |
 | top_k / mom_skip | 1 / 0 | 开关留档 | 均实测负优化 |
 | sh_cash_cooldown | 3 | 维持，但标记"孤峰" | A3：优势仅 +4.2%/+0.03 |
@@ -130,6 +136,20 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 - **QDII 溢价**：纳指溢价/黄金价差无指数数据可 diff，实盘监控项（D2/G8），回测不建模。
 - **git 工作区**：`strategy/signal.py`、`web/bt_runner.py` 有未提交改动；`audit/`、`.claude/` 未跟踪。改动前先 `git diff` 了解现状。
 - **QQQ-CNY 数据源周五缺失（2026-08-21 已修）**：`data/usfeed.py` 旧 inner join 让每周五的 QQQ 收盘无对应汇率行被丢弃（~20% 交易日缺失），且刷新永远落后一天 → 实盘推送持续"数据未就绪"回退纯ETF。已改 `merge_asof(backward)`；**基线因此重标定 3683.00/2.43 → 3729.95/2.51**，纯ETF口径(3595.1/2.09)不受影响。改数据源后必须重跑基线。
+- **Yahoo 被墙的兜底（2026-09-11 已修）**：本机连不上 Yahoo，`refresh_qqq_cny()` 自动切 新浪美股(QQQ)+中国货币网(USDCNY中间价)。中间价与 Yahoo 现货有稳定价差，兜底汇率**按重叠期比值中位数重定基**后才追加，防止接缝假跳变污染动量。
+- **实盘/回测口径一致性（2026-09-11 对齐）**：`live/runner.py` 必须与 `bt_runner` 同窗口语义：320 天预热 + `pre_days` + `accel_th` 全量预计算切片。此前实盘从决策区起点取数，expanding 阈值少一年历史，曾造成操作日期差 1 天。
+
+## 7b. 2026-09-10 实盘分叉事故（血泪教训，架构红线）
+
+**事故**：stock-bot/cron_etf_momentum.py 是 8 月中旬从主策略手工抄的副本。之后主策略迭代（加速止盈/恐慌抄底/绝对止损/空仓冷却/QQQ 混合）均未同步，07 月起实盘通知与主策略分叉；09-02 Yahoo 断连后副本静默降级纯 ETF 口径，**09-09 丢失"上证空仓"信号**（主策略：卖出黄金锁定 +7.72%；副本通知：继续持有）。同时 stock-bot 的 bot 应答/API 还各有一套简化判断，群里发过互相矛盾的指令。
+
+**红线（违反即不可接受）**：
+1. 策略逻辑只允许存在一份：`strategy/signal.py`。任何"生产环境另写一份简化版"的做法都是事故温床。
+2. 实盘决策唯一来源：`live/daily_run.py`（→ LiveRunner → compute_signals）。stock-bot/cron_etf_momentum.py 只是转发 shim（旧实现留档 `.deprecated-20260911`，禁止引用）。
+3. 数据降级必须显式告警：QQQ-CNY 陈旧时消息红字标注，禁止静默回退。
+4. 通知完整落盘 `live/notify_log.jsonl`，事后必须能还原用户收到的每一个字。
+5. 每日对账 `live/reconcile.py`：收盘回放仓位 vs 实盘决策 vs 实际持仓，不一致当天告警。
+6. `tests/test_production_link.py` 钉死上述结构，改动前先跑 pytest。
 
 ## 8. 协作习惯（与用户共事方式）
 

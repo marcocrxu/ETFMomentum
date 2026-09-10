@@ -35,7 +35,7 @@ class TushareFeed(DataFeed):
       (因子更新时历史价格自动整体重算, 无拼接缝)
     - 旧格式 ({code}_{start}_{end}.csv) 自动迁移清理
     """
-    def __init__(self, token: str, cache_dir: str = "/root/etf_strategy/cache"):
+    def __init__(self, token: str, cache_dir: str = "/home/ecs-user/etf_strategy/cache"):
         import tushare as ts
         self.pro = ts.pro_api(token)
         self.cache_dir = cache_dir

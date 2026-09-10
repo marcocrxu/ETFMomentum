@@ -1,6 +1,6 @@
 """E8 修正: 恐慌日与引擎同口径(全历史扩张阈值), bootstrap 对比默认窗 8 笔实际入场"""
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd, json
 from harness import FEED, bt
 
@@ -81,7 +81,7 @@ out = {
     "bootstrap_percentile": pct,
     "verdict": "百分位>50 → 选择有增量; ≈50 → 纯恐慌反弹beta",
 }
-json_path = "/root/etf_strategy/audit/out/e_group.json"
+json_path = "/home/ecs-user/etf_strategy/audit/out/e_group.json"
 r = json.load(open(json_path)); r["E8"] = out
 json.dump(r, open(json_path, "w"), ensure_ascii=False, indent=1, default=str)
 print(json.dumps(out, ensure_ascii=False, indent=1))

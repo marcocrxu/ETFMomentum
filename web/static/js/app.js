@@ -120,6 +120,7 @@ function collectParams() {
     mom_skip: +document.getElementById('mom_skip').value || 0,
     vix_gate: +document.getElementById('vix_gate').value || 0,
     skew_gate: +document.getElementById('skew_gate').value || 0,
+    rate_shock_gate: +document.getElementById('rate_shock_gate').value || 0,
     nz_mom_qqq_on: document.getElementById('nz_mom_qqq_on').checked,
     nz_mom_qqq_w: +document.getElementById('nz_mom_qqq_w').value || 0.7,
     ridge_on: document.getElementById('ridge_on').checked,
@@ -432,6 +433,7 @@ function applyConfig(cfg) {
   setVal('mom_skip', cfg.mom_skip);
   setVal('vix_gate', cfg.vix_gate);
   setVal('skew_gate', cfg.skew_gate);
+  setVal('rate_shock_gate', cfg.rate_shock_gate);
   setChecked('nz_mom_qqq_on', cfg.nz_mom_qqq_on);
   setVal('nz_mom_qqq_w', cfg.nz_mom_qqq_w);
   setChecked('ridge_on', cfg.ridge_on);

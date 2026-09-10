@@ -10,7 +10,7 @@ E8 恐慌抄底基准检验 (bootstrap vs 全部恐慌日)
 E9 抄底挪动剖面 (±5天平移 + 随机对照)
 """
 import sys
-sys.path.insert(0, "/root/etf_strategy"); sys.path.insert(0, "/root/etf_strategy/audit")
+sys.path.insert(0, "/home/ecs-user/etf_strategy"); sys.path.insert(0, "/home/ecs-user/etf_strategy/audit")
 import numpy as np, pandas as pd
 from harness import FEED, bt, load_mats, ALL_CODES, save
 
