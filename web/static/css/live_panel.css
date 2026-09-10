@@ -1,0 +1,36 @@
+/* 实盘实况面板 (live_panel.js 配套样式, 用 app.css 变量与全站一致) */
+.lp-banner { border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; border: 1px solid; }
+.lp-banner.hold   { background: rgba(76,175,80,.10); border-color: rgba(76,175,80,.4); }
+.lp-banner.switch { background: rgba(255,193,7,.08); border-color: rgba(255,193,7,.4); }
+.lp-banner.cash   { background: rgba(244,67,54,.12); border-color: rgba(244,67,54,.45); }
+.lp-banner.wait   { background: var(--surface-3); border-color: var(--border); }
+.lp-banner .lp-sig { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.lp-banner .lp-act { font-size: 22px; font-weight: 700; }
+.lp-banner .lp-reason { margin-top: 8px; font-size: 12px; color: var(--muted); }
+
+.lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.lp-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 13px 14px; position: relative; }
+.lp-card .lp-name { font-size: 14px; font-weight: 600; }
+.lp-card .lp-mom { font-size: 24px; font-weight: 700; margin: 4px 0; }
+.lp-card .lp-mom.pos, .lp-pos { color: var(--green); }
+.lp-card .lp-mom.neg, .lp-neg { color: var(--red); }
+.lp-card .lp-price { font-size: 12px; color: var(--muted); }
+.lp-medal { position: absolute; top: 10px; right: 12px; font-size: 17px; }
+.lp-tag { display: inline-block; font-size: 11px; border-radius: 7px; padding: 1px 7px; margin: 6px 4px 0 0; }
+.lp-tag.sim { background: rgba(100,181,246,.15); color: #64b5f6; }
+.lp-tag.act { background: rgba(255,193,7,.15); color: #ffc107; }
+
+.lp-panel { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 13px 16px; margin-bottom: 14px; }
+.lp-panel h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.lp-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0;
+          border-bottom: 1px solid var(--border); font-size: 13px; }
+.lp-row:last-child { border-bottom: none; }
+.lp-alert { background: rgba(244,67,54,.12); border: 1px solid rgba(244,67,54,.5); border-radius: var(--radius);
+            padding: 12px 16px; margin-bottom: 14px; color: #ff8a80; font-size: 13px; }
+.lp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lp-table th, .lp-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.lp-table th { color: var(--muted); font-weight: 500; }
+.lp-note { text-align: right; color: var(--muted); font-size: 11px; margin-top: 8px; }
+.lp-ok { color: var(--green); } .lp-bad { color: var(--red); }
