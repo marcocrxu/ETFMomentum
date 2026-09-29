@@ -255,7 +255,129 @@
     </div>
   </div>
 
-  <!-- §2 净值与周期 -->
+  <!-- §1c 分时段对比 -->
+  <div class="card">
+    <div class="card-header"><h2>§1c · 分时段对比（N-10）— 我们是"危机型"，她是"趋势型"</h2></div>
+    <div style="padding:18px">
+      <p class="note" style="line-height:1.9;margin-bottom:10px">
+        共同区间 <b>2014-01-02 ~ 2026-09-24（3097 个交易日）</b>，两边都从 2014 起跑（我方池数据够）。
+        对方取 <code>close_1bp</code> 冻结路径；我方 <code>web/bt_runner.py</code> 默认基线同窗重跑。
+        期间收益为<b>累计复利</b>，不做年化折算。
+        脚本 <code>audit/n_peer_periods.py</code>，数据 <code>audit/out/n_peer_periods.json</code>。
+      </p>
+
+      <h3 class="sec">① 逐年累计收益（理想同收盘 · 单边万一）</h3>
+      <table>
+        <thead><tr><th>年份</th><th class="col-mine">我方</th><th>V12-R2</th><th>V12-C</th><th>V10-H</th><th>V9.2+</th><th>胜负</th></tr></thead>
+        <tbody>
+          <tr><td>2014</td><td class="col-mine">+16.60%</td><td><b>+61.09%</b></td><td>+61.09%</td><td>+58.18%</td><td>+65.03%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2015</td><td class="col-mine"><b>+102.15%</b></td><td>+94.63%</td><td>+88.64%</td><td>+103.76%</td><td>+91.66%</td><td class="num-pos">我方</td></tr>
+          <tr><td>2016</td><td class="col-mine">−2.48%</td><td><b>+23.66%</b></td><td>+21.06%</td><td>+17.85%</td><td>+13.71%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2017</td><td class="col-mine"><b>+33.57%</b></td><td>+24.66%</td><td>+26.08%</td><td>+25.40%</td><td>+20.06%</td><td class="num-pos">我方</td></tr>
+          <tr><td>2018</td><td class="col-mine"><b>+45.53%</b></td><td>+41.74%</td><td>+41.88%</td><td>+30.40%</td><td>+29.87%</td><td class="num-pos">我方</td></tr>
+          <tr><td>2019</td><td class="col-mine"><b>+62.69%</b></td><td>+52.36%</td><td>+50.06%</td><td>+54.36%</td><td>+33.30%</td><td class="num-pos">我方</td></tr>
+          <tr><td>2020</td><td class="col-mine">+72.39%</td><td><b>+114.17%</b></td><td>+88.03%</td><td>+80.87%</td><td>+80.44%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2021</td><td class="col-mine"><b>+20.84%</b></td><td>+6.00%</td><td>+13.95%</td><td>+20.23%</td><td>+21.50%</td><td class="num-pos">我方</td></tr>
+          <tr><td>2022</td><td class="col-mine">+19.01%</td><td>+25.63%</td><td>+29.24%</td><td><b>+32.05%</b></td><td>+25.75%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2023</td><td class="col-mine">+26.57%</td><td>+32.16%</td><td>+36.63%</td><td><b>+38.82%</b></td><td>+27.83%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2024</td><td class="col-mine">+70.94%</td><td>+81.07%</td><td>+88.67%</td><td><b>+94.27%</b></td><td>+75.77%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2025</td><td class="col-mine">+66.65%</td><td>+100.41%</td><td><b>+109.73%</b></td><td>+96.80%</td><td>+100.74%</td><td class="num-neg">对方</td></tr>
+          <tr><td>2026<span class="note">（至 09-24）</span></td><td class="col-mine">+24.08%</td><td><b>+76.58%</b></td><td>+58.62%</td><td>+46.85%</td><td>+76.94%</td><td class="num-neg">对方</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        <b>我方赢的 5 年全部是危机/防御年</b>：2015（杠杆牛+股灾）、2017、2018（A股熊我们还 +45.5%）、
+        2019、2021（她只 +6.00%，我们 +20.84%）。<b>其余 8 年她赢</b>，而且 2014（+44.5pp）、
+        2016（+26.1pp）、2020（+41.8pp）、2026（+52.5pp）都是大比分。
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">② 同成本口径（单边 11bp）逐年 —— 这才是公平的比法</h3>
+      <p class="note" style="margin-bottom:6px">
+        上面那张是 1bp。她的 <code>close_11bp</code> 是"单边万一 + 10bp 滑点"，
+        我方引擎也能加 <code>slippage=0.0010</code>，于是可以真正同口径比。
+      </p>
+      <table>
+        <thead><tr><th>年份</th><th class="col-mine">我方(11bp)</th><th>V12-R2(11bp)</th><th>我方 − 对方</th><th>V10-H(11bp)</th></tr></thead>
+        <tbody>
+          <tr><td>2014</td><td class="col-mine">+14.18%</td><td>+57.90%</td><td class="num-neg">−43.7pp</td><td>+55.04%</td></tr>
+          <tr><td>2015</td><td class="col-mine">+93.83%</td><td>+85.12%</td><td class="num-pos">+8.7pp</td><td>+94.98%</td></tr>
+          <tr><td>2016</td><td class="col-mine">−5.93%</td><td>+19.52%</td><td class="num-neg">−25.5pp</td><td>+13.45%</td></tr>
+          <tr><td>2017</td><td class="col-mine">+30.92%</td><td>+18.81%</td><td class="num-pos">+12.1pp</td><td>+19.51%</td></tr>
+          <tr><td>2018</td><td class="col-mine">+42.79%</td><td>+35.91%</td><td class="num-pos">+6.9pp</td><td>+24.03%</td></tr>
+          <tr><td>2019</td><td class="col-mine">+57.25%</td><td>+44.63%</td><td class="num-pos">+12.6pp</td><td>+47.11%</td></tr>
+          <tr><td>2020</td><td class="col-mine">+63.97%</td><td>+102.49%</td><td class="num-neg">−38.5pp</td><td>+70.32%</td></tr>
+          <tr><td>2021</td><td class="col-mine">+17.50%</td><td>+0.62%</td><td class="num-pos">+16.9pp</td><td>+12.77%</td></tr>
+          <tr><td>2022</td><td class="col-mine">+15.49%</td><td>+20.70%</td><td class="num-neg">−5.2pp</td><td>+27.63%</td></tr>
+          <tr><td>2023</td><td class="col-mine">+22.82%</td><td>+25.70%</td><td class="num-neg">−2.9pp</td><td>+31.77%</td></tr>
+          <tr><td>2024</td><td class="col-mine">+63.90%</td><td>+69.49%</td><td class="num-neg">−5.6pp</td><td>+81.85%</td></tr>
+          <tr><td>2025</td><td class="col-mine">+60.11%</td><td>+89.49%</td><td class="num-neg">−29.4pp</td><td>+86.82%</td></tr>
+          <tr><td>2026<span class="note">（至 09-24）</span></td><td class="col-mine">+19.93%</td><td>+67.62%</td><td class="num-neg">−47.7pp</td><td>+39.40%</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        <b>同成本下我方仍然是 5/13 年胜，全期年化我方 37.63% vs 她 47.99%（差 −10.36pp），
+        但回撤几乎相同（−22.25% vs −21.97%）。</b>
+        注意第 ③ 张表（1bp）里她领先 13.06pp，加到 11bp 后只领先 10.36pp —— 说明
+        <b>成本对她的伤害比对我们大</b>（她换手 310 次 vs 我们 257~306 次）。
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">③ 周期分段（与我方 §2 同分段）</h3>
+      <table>
+        <thead><tr><th>周期段</th><th class="col-mine">我方</th><th>V12-R2</th><th>V10-H</th><th>我方 − 对方</th></tr></thead>
+        <tbody>
+          <tr><td>2014H1 熊末磨底</td><td class="col-mine"><b>+16.2%</b></td><td>+3.2%</td><td>+3.2%</td><td class="num-pos">+13.0pp</td></tr>
+          <tr><td>2014H2~2015H1 第一轮牛·杠杆牛</td><td class="col-mine">+84.0%</td><td><b>+210.6%</b></td><td>+227.8%</td><td class="num-neg">−126.6pp</td></tr>
+          <tr><td>2015H2~2016H1 股灾+熔断</td><td class="col-mine"><b>+25.5%</b></td><td>+3.8%</td><td>+1.2%</td><td class="num-pos">+21.7pp</td></tr>
+          <tr><td>2016~2018-01 慢牛/价值</td><td class="col-mine">+16.5%</td><td><b>+64.2%</b></td><td>+57.4%</td><td class="num-neg">−47.7pp</td></tr>
+          <tr><td>2018-02~2019-01 A股熊</td><td class="col-mine"><b>+43.9%</b></td><td>+30.5%</td><td>+20.0%</td><td class="num-pos">+13.4pp</td></tr>
+          <tr><td>2019~2021-02 结构牛</td><td class="col-mine">+199.7%</td><td><b>+253.7%</b></td><td>+207.9%</td><td class="num-neg">−54.0pp</td></tr>
+          <tr><td>2021-03~2024-09 长熊</td><td class="col-mine">+149.7%</td><td><b>+175.0%</b></td><td>+268.2%</td><td class="num-neg">−25.3pp</td></tr>
+          <tr><td>2024-10~2026-09 第二轮牛</td><td class="col-mine">+125.8%</td><td><b>+277.7%</b></td><td>+197.2%</td><td class="num-neg">−151.9pp</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        <b>结构非常清楚</b>：我们赢的 3 段（熊末磨底 / 股灾+熔断 / A股熊）<b>全是下跌或磨底段</b>，
+        合计 +48.1pp；她赢的 5 段全是趋势段，合计 −405.5pp。<br>
+        <b>⚠️ 与 §2 的旧表不一致是数据版本，不是策略变化</b>：§2 是 2026-08-25 的快照，
+        当时 3 只标的的历史头部还没回补（本次拉数触发 <code>513100.SH 头部回补 +185 行</code> 等），
+        2014 起跑点的预热段因此不同。我方 2016-07-07 起的基线仍逐位复现 45.51/−18.08/2.52，可确认引擎未变。<br>
+        <b>一条对我们不利、必须记下的变化</b>：§2 当时说"v9 的超额 87% 来自两轮牛市、熊市段我方占优"。
+        现在看 V12-R2 连 <b>长熊段（2021-03~2024-09）也赢我们 +25.3pp</b>，
+        而且 V10-H 在那一段是 +268.2%（近我们两倍）。<b>我们"熊市更强"的相对优势在最新版上已经不见了。</b>
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">④ 滚动窗口胜率</h3>
+      <table>
+        <thead><tr><th>滚动窗</th><th>窗数</th><th class="col-mine">我方胜率</th><th>我方 − V12-R2 超额<br><span class="note">中位 / P10 / P90</span></th><th>最好 / 最差</th></tr></thead>
+        <tbody>
+          <tr><td>1 年（244 日）</td><td>2853</td><td class="col-mine"><b>37%</b></td><td>−6.8pp / −64.8pp / +17.1pp</td><td>+42.8pp / −141.9pp</td></tr>
+          <tr><td>3 年（732 日）</td><td>2365</td><td class="col-mine"><b>24%</b></td><td>−36.0pp / −197.5pp / +31.5pp</td><td>+96.9pp / −312.9pp</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        任意时点入场、持有 1 年，我们只有 37% 的概率跑赢；持有 3 年只有 24%。
+        这不是"某一段运气不好"，而是<b>绝大多数历史起点上都落后</b>。
+        这一点必须承认，不能再用"周期抽样偏差"打包解释。
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">⑤ 结论与边界</h3>
+      <ul class="tight">
+        <li><b>两边的生态位不同</b>：我们靠"熊市不亏/少亏"赚钱（2018 +45.5%、2015H2 股灾段 +25.5%），
+            她靠"趋势段满吃"赚钱（第一轮牛 +210.6%、第二轮牛 +277.7%）。这是设计差异，不是执行差异。</li>
+        <li><b>同成本下她全期领先 10.36pp/年、回撤相同</b>。这个差距不能再用"她吃了 2014-2015"解释——
+            §1 已证明在我们自己选的主样本窗（2016-07 起、不含 2014）她也领先 ~10pp。</li>
+        <li><b>成本敏感性对我们有利</b>：1bp→11bp 她掉 13.06pp 优势中的 2.7pp，我们掉得更少；
+            若用她最差的 <code>lag1_11bp</code> 对比我们理想口径，我们在 13 年里赢 9 年——
+            但那是拿我们的最好口径对她的最差口径，<b>不能当结论</b>（我方引擎目前不支持"延迟一个收盘成交"，
+            无法做同口径的 lag1 对照，已列为待办）。</li>
+        <li><b>仍然成立的边界</b>：两边数据管道不同（她=分红重建总回报，我们=前复权+QQQ 混合），
+            没有做口径分解；她的 2014-2026 全部在拟合窗内，我们的 2014-2026 也一样被反复看过。
+            <b>这些数字都是 in-sample，不是任何一方的能力证明。</b></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- §2 净值与周期 (v9 时期档案) -->
   <div class="card">
     <div class="card-header"><h2>§2 · 净值对比与周期归因（v9 时期档案 · 2014-01 ~ 2026-08）</h2></div>
     <div style="padding:18px">
