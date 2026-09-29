@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>同行深度对比 · 我的策略 vs v9 · ETF 动量轮动</title>
+  <title>同行深度对比 · 我的策略 vs 同行（v9 → V12-R2）· ETF 动量轮动</title>
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/lib/echarts.min.js"></script>
   <script src="/static/archive_data.js"></script>
@@ -33,15 +33,83 @@
 <body>
 <div class="page-wrapper paper">
   <header class="page-header">
-    <h1>🔬 同行深度对比 · 我的策略 vs v9</h1>
-    <p class="subtitle">同口径复现 · 周期归因 · 组件拆解 · 过拟合审查（审计档案：v9 学习消融 / L 组归因 / L-11）</p>
+    <h1>🔬 同行深度对比 · 我的策略 vs 同行（v9 → V12-R2）</h1>
+    <p class="subtitle">同口径复现 · 版本链追踪 · 周期归因 · 组件拆解 · 过拟合审查 ｜
+      档案：v9 学习消融 / L 组归因 / L-11 / N 组同窗重跑（2026-09-29 更新）</p>
   </header>
   <nav class="page-nav">
     <a href="/">📊 回测</a>
     <a href="/analysis">📄 分析报告</a>
     <a href="/pdfcompare">🔍 同行对比</a>
-    <a href="/peer/v9" class="active">🔬 vs v9 详情</a>
+    <a href="/peer/v9" class="active">🔬 vs 同行 详情</a>
   </nav>
+
+  <!-- §0 同行更新速览 -->
+  <div class="card" style="border-color:var(--accent)">
+    <div class="card-header"><h2>§0 · 同行 2026-09-29 更新速览（我们上次拉取是 2026-08-25）</h2></div>
+    <div style="padding:18px">
+      <p class="note" style="line-height:1.95;margin-bottom:12px">
+        仓库：<b>github.com/zzhu41/stock</b>（2026-08-28 首次公开提交，至 2026-09-28 共 46 个提交）。
+        我们 2026-08-25 从作者文件服务拿到的复现包 = 她的 <b>v9</b>；一个月里她把主推送版本推进到了 <b>V12-R2</b>，
+        并<b>自己公布了选择偏差审计</b>。三条要点：
+      </p>
+      <div class="verdict" style="margin-bottom:14px">
+        <div class="v-card v-warn">
+          <h3>① 版本链：v9 → v9.1 → v9.2 → v9.2+ → V10-H → V11 → V12 → V12-R2</h3>
+          <p>每一版都做了消融与留档；累计搜索规模：V10 单持仓 <b>9558</b> 项、V11 <b>714</b> 项、
+             V12 <b>1807</b> 项、V12-R2 <b>864</b> 格（866 条记录）。<b>正式合格策略至今为空</b>，
+             当前主推送 V12-R2 是“用户指定的运营选择”，不是通过资格层的赢家。</p>
+        </div>
+        <div class="v-card v-warn">
+          <h3>② 数据口径被推翻重来（最重要的一条）</h3>
+          <p>她 2026-09-27 发现：加减式<b>前复权</b>价会把分红型 ETF 的历史百分比收益放大
+             （例：510880 在 2014-01-22 真实 +2.09%，前复权价却记成 +14.47%），
+             据此<b>撤回了自己的 V10-H 54.75% 年化候选</b>，改用原始价 + 公告折算 + 分红重建总回报指数重算。</p>
+        </div>
+        <div class="v-card v-info">
+          <h3>③ 她自己得出了和我们 L-11 一样的结论</h3>
+          <p>2026-09-27 的 <code>reports/research_selection_audit.md</code> 明确写：
+             “仓库有充分证据表明研究者反复查看并筛选了同一段历史；<b>没有找到足以验证修复后版本的干净样本外业绩</b>”，
+             并拒绝给出精确 PBO。她的 <code>overfitting_diagnostics.md</code> 用配对区块 bootstrap 显示
+             版本间差异基本不显著（v9.2−v9.1 = <b>−0.66pp，区间 [−5.4, +4.1]</b>）。</p>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>版本</th><th>时间</th><th>相对上一版的实质改动</th><th>结局</th></tr></thead>
+        <tbody>
+          <tr><td><b>v9</b>（=我们存档的复现包）</td><td>2026-08-25</td>
+              <td>WLS25 打分 / MA250 牛熊 / 急跌 4% 离场 / 永不空仓 / 恐慌抄底锁 7 日 / 11 只 regime 条件池</td>
+              <td>我们的对照基准</td></tr>
+          <tr><td><b>v9.1</b></td><td>2026-08-28</td>
+              <td>分池动量缓冲：A股 2% / 跨境 3% / 黄金 3%（原统一 2%）</td>
+              <td>首次公开仓库；年化 +0.89pp（区间 [−1.4, +3.4]，不显著）</td></tr>
+          <tr><td><b>v9.1-0906 → v9.2</b></td><td>2026-09-05 ~ 09-13</td>
+              <td>抄底通道扩容：QVIX 期权隐波 ∪ 量能恐慌（fz25_cv）；QVIX 缺当日值即停用，绝不退旧数据</td>
+              <td>进看板默认；但量能通道单独为负（−1.65pp），增益靠 19 笔新增事件</td></tr>
+          <tr><td><b>V10-H</b></td><td>2026-09-24 ~ 09-27</td>
+              <td>6544 配置搜索 + 复权口径修正重建；新 H 45.62% vs v9.2 46.32%</td>
+              <td>原 54.75% 候选作废；结论“本轮未取得实质收益升级”</td></tr>
+          <tr><td><b>V11 A/B</b></td><td>2026-09-27</td>
+              <td>多周期 WLS 等权评分 / 统一 1% 缓冲 / 健康持有 3 日</td>
+              <td><b>均未通过事前固定的 2022–2025 确认门槛</b>，未接入生产</td></tr>
+          <tr><td><b>V12 A/B/C</b></td><td>2026-09-27 ~ 09-28</td>
+              <td>三阶段搜索 1807 配置；评分/持有期/急跌阈值/QVIX 通道</td>
+              <td><b>qualified_primary = null</b>，三个研究对照（C 最高 54.39%）</td></tr>
+          <tr><td><b>V12-R2</b>（当前主推送）</td><td>2026-09-28</td>
+              <td>在 C4 基座上扫 864 格（WLS 窗 × 平滑 × 急跌倍数 × 最短持有 × 缓冲 × 风险尺度来源），
+                  选 highest_cagr：WLS25 / 4 报价平滑 / 前报价 20-60 日波动较大值×1.4 / MA180 / 健康持有 2 日</td>
+              <td>严格层与折衷层<b>均 0 合格</b>；用户指定部署，独立前向账户 2026-09-29 起</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.95;margin-top:10px">
+        <b>对我们的含义</b>：① 我们页面过去引用的 v9 全窗 48.79%，建立在已被她撤回的前复权口径上——
+        修正后同一版本是 <b>43.24%</b>，这一行必须换掉。<br>
+        ② 她的最新版在我们<b>自己的主样本窗</b>上已经反超我们（见 §1），不再是 2026-08 时“同窗口我方全胜”的格局。<br>
+        ③ 但“反超”仍然全部发生在<b>她自己的拟合窗口内</b>；她的审计与我们 L-11 的判断一致：干净样本外至今为零，
+        两边都由 2026-08 之后的实盘裁决。
+      </p>
+    </div>
+  </div>
 
   <!-- 核心结论 -->
   <div class="card">
@@ -49,19 +117,23 @@
     <div style="padding:18px">
       <div class="verdict">
         <div class="v-card v-win">
-          <h3>① 同窗口我方全指标占优</h3>
-          <p>主样本窗 2016-07 ~ 2026-08：我方 <b>45.51% / -18.08% / Calmar 2.52</b>，
-             v9 <b>42.17% / -26.99% / 1.56</b>。年化、回撤、风险调整收益全胜。</p>
+          <h3>① 同窗口胜负已翻转：她的 V12-R2 现在领先我们</h3>
+          <p>主样本窗对齐到 2026-09-24（同收盘、单边万一、244 日年化）：我方 <b>43.06% / -18.08% / 2.38</b>，
+             她的 V12-R2 <b>53.13% / -20.56% / 2.58</b>。年化输 ~10pp，回撤我们浅 2.5pp。
+             2026-08 那次“我方全指标占优”只对得上她当时的 v9（36.63%）。</p>
         </div>
         <div class="v-card v-warn">
-          <h3>② 近三年 v9 反超，但属周期抽样偏差</h3>
-          <p>2021-08 起样本外窗 v9 54.9%/3.73 反超我方 43.94%/2.40。归因：超额 <b>87% 来自两轮牛市 +
-             标的宽度</b>（有色/科创/2000/创新药），非行为组件可移植；8 年滚动窗不含 2014 时我方 8/10 胜。</p>
+          <h3>② 但优势仍在她自己的拟合窗内，且她已自我披露</h3>
+          <p>她的窗口是 2014-01 ~ 2026-09-24，V12-R2 的 864 格网格就在这段历史上扫；
+             2021/2026 都参与了优化。她 2026-09-27 的审计原文：<b>“没有找到足以验证修复后版本的干净样本外业绩”</b>。
+             近三年窗她领先幅度更大（60.2% vs 我们 40.9%），但那正是她反复搜索的区段。</p>
         </div>
         <div class="v-card v-info">
-          <h3>③ 过拟合了吗？参数层未检出，组件层强烈嫌疑，整体不可判定</h3>
-          <p>参数精确值在高原上、拟合外推不崩（低功效检验的阴性结果）；但四个组件全部按 2014-2026
-             同一窗口的历史危机逐年加入，是典型的回测驱动设计。<b>真正的样本外只有未来实盘。</b>详见 §4。</p>
+          <h3>③ 过拟合判定：两边结论已经合流</h3>
+          <p>我们 L-11（2026-08-30）：参数层未检出 / 组件层强烈嫌疑 / 整体不可判定。
+             她 2026-09-27 独立得出同一结论，并给出更硬的自我指控：
+             <b>参数邻域内 12~14 个邻居全部不优于基线，最差邻居终值只剩 63%</b>；
+             版本间差异的配对区块 bootstrap 区间全部跨 0。<b>真正的样本外只有未来实盘。</b>详见 §4。</p>
         </div>
       </div>
     </div>
@@ -69,33 +141,128 @@
 
   <!-- §1 多窗口指标 -->
   <div class="card">
-    <div class="card-header"><h2>§1 · 多窗口指标对照</h2></div>
+    <div class="card-header"><h2>§1 · 多窗口指标对照（N 组，2026-09-29 同窗重跑）</h2></div>
     <div style="padding:18px">
+      <p class="note" style="line-height:1.9;margin-bottom:6px">
+        口径统一：<b>同收盘成交、单边万一佣金、244 观察日/年</b>。对方数字取自她冻结的逐日路径
+        （<code>v12_r2/results/audit/reference_paths.npz</code> 与 <code>v12/results/sensitivity/paths.npz.gz</code>，
+        前者经她独立复算逐值一致），<b>原始数据采用她 2026-09-27 修正后的总回报口径</b>；
+        我方数字是同窗重跑 <code>web/bt_runner.py</code> 默认基线（纳指/黄金/创业）。
+      </p>
       <table>
-        <thead><tr><th>窗口</th><th class="col-mine">我的策略（年化/回撤/Calmar/笔数）</th><th>v9（年化/回撤/Calmar/笔数）</th><th>判读</th></tr></thead>
+        <thead><tr><th>窗口</th><th class="col-mine">我的策略<br><span class="note">年化/回撤/Calmar/夏普</span></th>
+          <th>她的 v9<br><span class="note">=我们 08-25 存档版</span></th><th>她的 V9.2</th><th>她的 V9.2+</th>
+          <th>她的 V10-H</th><th>她的 V12-C</th><th>她的 V12-R2<br><span class="note">当前主推送</span></th><th>判读</th></tr></thead>
         <tbody>
           <tr><td><b>主样本窗</b><br><span class="note">2016-07-07 ~ 2026-08-20</span></td>
-              <td class="col-mine"><span class="num-pos">45.51%</span> / <span class="num-neg">-18.08%</span> / <b>2.52</b> / 253 笔</td>
-              <td>42.17% / <span class="num-neg">-26.99%</span> / 1.56 / 186 次</td>
-              <td><span class="flat">我方全胜</span></td></tr>
-          <tr><td><b>样本外窗</b><br><span class="note">2021-08 ~ 2026-08（近三年）</span></td>
-              <td class="col-mine">43.94% / <span class="num-neg">-18.34%</span> / <b>2.40</b></td>
-              <td><span class="num-pos">54.9%</span> / <span class="num-neg">-14.7%</span> / <b>3.73</b></td>
-              <td><span class="cliff">v9 反超</span>（归因见 §2）</td></tr>
-          <tr><td><b>v9 全窗</b><br><span class="note">2014-01 ~ 2026-08</span></td>
-              <td class="col-mine">—<span class="note">（我方池 159915 数据 2016 年起）</span></td>
-              <td>48.79% / <span class="num-neg">-26.99%</span> / 1.81 / 228 次</td>
-              <td>v9 官方代码复现，与论文声称值一致（+15367%/49.2%/-27.0%）</td></tr>
+              <td class="col-mine"><span class="num-pos">43.81%</span> / <span class="num-neg">-18.08%</span> / <b>2.42</b> / 1.71</td>
+              <td>38.32% / -24.16% / 1.59 / —</td>
+              <td>43.22% / -24.16% / 1.79 / —</td>
+              <td>47.60% / -21.68% / 2.20 / —</td>
+              <td>51.26% / -23.88% / 2.15 / —</td>
+              <td>53.64% / <b>-17.79%</b> / <b>3.02</b> / —</td>
+              <td><b>53.88%</b> / -20.56% / 2.62 / —</td>
+              <td><span class="cliff">同窗反超</span>（我们仍胜回撤）</td></tr>
+          <tr><td><b>主样本窗（对齐她的截止日）</b><br><span class="note">2016-07-07 ~ 2026-09-24</span></td>
+              <td class="col-mine">43.06% / <span class="num-neg">-18.08%</span> / 2.38 / 1.69<br><span class="note">257 笔</span></td>
+              <td>36.63% / -24.16% / 1.52 / —</td>
+              <td>42.28% / -24.16% / 1.75 / —</td>
+              <td>46.59% / -21.68% / 2.15 / —</td>
+              <td>50.19% / -23.88% / 2.10 / —</td>
+              <td>52.38% / <b>-17.79%</b> / <b>2.95</b> / 1.80</td>
+              <td><span class="num-pos">53.13%</span> / -20.56% / 2.58 / 1.83<br><span class="note">310 次换仓</span></td>
+              <td><span class="cliff">V12-R2 反超我们 ~10pp</span></td></tr>
+          <tr><td><b>近三年窗</b><br><span class="note">2021-08-23 ~ 2026-09-24</span></td>
+              <td class="col-mine">40.88% / <span class="num-neg">-18.34%</span> / 2.23 / 1.54</td>
+              <td>47.09% / -20.58% / 2.29 / —</td>
+              <td>53.31% / -18.81% / 2.83 / —</td>
+              <td>58.91% / -18.81% / 3.13 / —</td>
+              <td>58.98% / -23.88% / 2.47 / —</td>
+              <td>61.92% / <b>-17.79%</b> / <b>3.48</b> / 1.84</td>
+              <td><span class="num-pos">60.23%</span> / -20.56% / 2.93 / 1.83</td>
+              <td><span class="cliff">差距最大的一窗</span>（也是她的搜索区）</td></tr>
+          <tr><td><b>她的全窗</b><br><span class="note">2014-01-02 ~ 2026-09-24</span></td>
+              <td class="col-mine">—<span class="note">（我方池数据 2016 年起）</span></td>
+              <td>43.24% / -24.16% / 1.79 / —</td>
+              <td>46.32% / -24.16% / 1.92 / —</td>
+              <td>50.13% / -21.68% / 2.31 / —</td>
+              <td>53.31% / -23.88% / 2.23 / —</td>
+              <td>54.39% / -20.16% / 2.70 / 1.84</td>
+              <td><span class="num-pos">55.27%</span> / -20.56% / 2.69 / 1.88</td>
+              <td>与她自己文档一致（V12-R2 全窗 +26530%）</td></tr>
         </tbody>
       </table>
-      <p class="note">口径：收盘成交、单边万一手续费；v9 为官方修复后代码（backtest/v9_official/），数据统一截至 2026-08-20。</p>
+      <h3 class="sec" style="margin-top:16px">⚠️ 换掉旧行：我们页面上原来引用的两个数字已经作废</h3>
+      <table>
+        <thead><tr><th>旧页面数字</th><th>为什么作废</th><th>修正后</th></tr></thead>
+        <tbody>
+          <tr><td>v9 全窗 <b>48.79%</b> / -26.99% / 1.81</td>
+              <td>建立在<b>加减式前复权</b>价上。她 2026-09-27 用未复权价证明该口径把分红型 ETF 的
+                  历史百分比收益放大（510880 真实 +2.09% 被记成 +14.47%），已撤回同源候选</td>
+              <td><b>43.24%</b> / -24.16% / 1.79</td></tr>
+          <tr><td>v9 主样本窗 <b>42.17%</b> / -26.99% / 1.56</td>
+              <td>同上（旧数据 + 我们当时按 252 日折算年化，两处口径都不一致）</td>
+              <td><b>36.63%</b>（244 日年化）/ -24.16% / 1.52</td></tr>
+          <tr><td>近三年 v9 <b>54.9%</b> / -14.7% / 3.73</td>
+              <td>同上；且那是 v9 在她的窗口内的表现，不构成样本外（2026-09-24 截止）</td>
+              <td><b>47.09%</b> / -20.58% / 2.29</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9;margin-top:10px">
+        <b>怎么读这张表</b>：① 我方 244 日口径与 252 日口径的差别（43.81% vs 45.51%）纯粹是年化折算，
+        不是策略变化；页面下方 §2~§5 的历史档案仍用当年 252 日口径的原数字，未回溯改写。<br>
+        ② 两边数据管道不同：她用“原始价 + 公告折算 + 分红重建”的总回报指数，我们用腾讯前复权 + QQQ×USDCNY 混合，
+        谁的口径都还有残差（她自己也列了 510500 无法用公告比例解释的复权残差）。<b>这 10pp 里有多少是口径、多少是策略，
+        本次没有分解</b>——这是这张表最大的局限，不要当成纯策略差距读。<br>
+        ③ v9→V12-R2 在我们这个窗口上是 36.63% → 53.13%，同一数据口径内部的提升是真实的（同一批路径、同一引擎）；
+        但这一提升同样是在她自己反复看过的历史上取得的。
+      </p>
+    </div>
+  </div>
+
+  <!-- §1b 执行敏感性 -->
+  <div class="card">
+    <div class="card-header"><h2>§1b · 执行敏感性：她的版本也扛不住“晚一天 + 11bp”</h2></div>
+    <div style="padding:18px">
+      <p class="note" style="line-height:1.9;margin-bottom:8px">
+        她自己在 <code>v12_r2/REPORT.md</code> 与 <code>reports/correctness_review.md</code> 公布了四种情景。
+        <code>close_1bp</code> 是我们两边唯一可比的口径；另外三档是她主动做的压力测试。
+      </p>
+      <table>
+        <thead><tr><th>情景（主样本窗 2016-07-07 ~ 2026-09-24）</th><th>我的策略</th><th>她的 V12-R2</th><th>她的 V12-C</th></tr></thead>
+        <tbody>
+          <tr><td><b>close_1bp</b> 理想同收盘 · 单边万一 <span class="note">（唯一可比）</span></td>
+              <td class="col-mine">43.06% / -18.08%</td><td>53.13% / -20.56%</td><td>52.38% / -17.79%</td></tr>
+          <tr><td>close_11bp 同收盘 · 单边万一 + 10bp 滑点</td>
+              <td class="col-mine"><span class="note">我方引擎不含滑点，此档无法对照</span></td>
+              <td>45.38% / -21.97%</td><td>44.25% / -18.87%</td></tr>
+          <tr><td>lag1_1bp 延迟一个收盘 · 单边万一</td>
+              <td class="col-mine"><span class="note">—</span></td>
+              <td><span class="cliff">37.61%</span> / -22.91%</td><td>39.71% / -26.82%</td></tr>
+          <tr><td>lag1_11bp 延迟一个收盘 · 单边万一 + 10bp</td>
+              <td class="col-mine"><span class="note">—</span></td>
+              <td><span class="cliff">30.65%</span> / -24.29%</td><td>32.25% / -29.70%</td></tr>
+        </tbody>
+      </table>
+      <ul class="tight">
+        <li><b>纯加成本（11bp）她也只掉 7.8pp</b>（53.13%→45.38%），仍高于我们的 43.06%。
+            也就是说：<b>即使替她扣掉我们没算的滑点，她在本窗仍然领先</b>。这一点必须承认。</li>
+        <li><b>但延迟一个收盘就崩 15.5pp</b>（53.13%→37.61%），比她自己的 v9 更敏感
+            （v9：36.63%→25.26%，掉 11.4pp）。她的日频换仓 310 次/十年，对成交时点高度敏感——
+            而 14:50 生成信号、当日收盘成交这个理想假设，她自己反复声明“不等于实际可成交收益”。</li>
+        <li>她的 lag1 是<b>次日收盘</b>，不是次日开盘、也不是 14:50 报价。真正的实盘档位两边都还缺。</li>
+      </ul>
     </div>
   </div>
 
   <!-- §2 净值与周期 -->
   <div class="card">
-    <div class="card-header"><h2>§2 · 净值对比与周期归因（2014-01 ~ 2026-08）</h2></div>
+    <div class="card-header"><h2>§2 · 净值对比与周期归因（v9 时期档案 · 2014-01 ~ 2026-08）</h2></div>
     <div style="padding:18px">
+      <p class="note" style="margin-bottom:8px">
+        <b>本节的图与表是 2026-08 的 v9 时期快照</b>（旧前复权口径 + 252 日年化），保留作历史档案，数字未回溯改写；
+        与 §1 的新口径不可直接相加。它回答的问题——“v9 的超额来自哪里”——仍然有效。
+      </p>
       <div id="cycle-chart" style="height:430px"></div>
       <h3 class="sec" style="margin-top:16px">按周期分段收益（段内累计）</h3>
       <table id="cycle-table"></table>
@@ -103,13 +270,24 @@
         结论：v9 全部超额里 <b>87%</b> 来自两轮牛市（2014H2-15H1 杠杆牛、2024H2-26 风险牛）；其余 6 段我方 4 胜、总账 +110pp。
         12.6 年只有 2 个"他的风格"周期、1 个"我的风格"周期，样本偏向 v9，属<b>周期抽样偏差</b>而非能力差距；
         8 年滚动窗口不含 2014 时我方 8/10 胜。</p>
+      <p class="note" style="line-height:1.9;margin-top:8px">
+        <b>2026-09-29 补记（重要）</b>：这个"周期抽样偏差"解释现在<b>部分失效</b>。
+        §1 显示她迭代到 V12-R2 之后，在我们这个不含 2014 的主样本窗里也领先我们 10pp——
+        所以当年的"超额主要来自两轮牛市"至少不再适用于她的最新版。
+        同时她还是没能给出干净样本外（见 §4），因此也<b>不能</b>反过来说"她的新优势已被验证"。
+        正确的读法是：<b>我们当年那句"周期抽样偏差"对 v9 成立，但用它来解释 V12-R2 已经不够了。</b>
+      </p>
     </div>
   </div>
 
   <!-- §3 组件拆解 -->
   <div class="card">
-    <div class="card-header"><h2>§3 · v9 组件拆解 — 逐个关闭退化到 yanyan 配置</h2></div>
+    <div class="card-header"><h2>§3 · v9 组件拆解 — 逐个关闭退化到 yanyan 配置（v9 时期档案）</h2></div>
     <div style="padding:18px">
+      <p class="note" style="margin-bottom:8px">
+        <b>同样是 2026-08 的 v9 口径</b>。她的新版本（V9.2 起）在此之上又加了 QVIX/量能抄底通道、
+        V12 系列改了评分与急跌阈值；本表不覆盖那些组件。她自己的对应消融见 §4b。
+      </p>
       <table>
         <thead><tr><th>配置（主样本窗 2016-07 ~ 2026-08）</th><th>年化</th><th>累计</th><th>Calmar</th><th>换手</th><th>组件边际</th></tr></thead>
         <tbody>
@@ -215,30 +393,125 @@
     </div>
   </div>
 
+  <!-- §4b 她自己的审计 -->
+  <div class="card" style="border-color:#ff9800">
+    <div class="card-header"><h2>§4b · 她自己的审计（2026-09-27）— 独立得出与我们相同的结论</h2></div>
+    <div style="padding:18px">
+      <p class="note" style="line-height:1.95;margin-bottom:10px">
+        她新增了 <code>reports/</code> 目录，四份自审报告 + 一份专门的选型审计。原文判断：
+        <b>“仓库有充分证据表明研究者反复查看并筛选了同一段历史；没有找到足以验证修复后版本的干净样本外业绩。
+        这个判断不等于已证明策略必然失效，也不能换算成一个可靠的‘过拟合概率’。”</b>
+        这句话几乎是我们 L-11 判定的镜像——但这次是<b>由她自己的档案计数支撑的</b>，比我们的外部推断更硬。
+      </p>
+      <h3 class="sec">证据 ①：她自己数出来的搜索规模</h3>
+      <table>
+        <thead><tr><th>范围</th><th>数量</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>V10 单持仓搜索</td><td><b>9558</b> 项</td><td>她自己在 <code>v12/DESIGN_NOTES.md</code> 披露的累计数</td></tr>
+          <tr><td>V10 结果文件里的变体</td><td>185 个名字 / 550 条记录 / 404 个 (变体,起点) 对</td>
+              <td>她明确说“名称不是独立假设”，拒绝当成 179 次独立试验</td></tr>
+          <tr><td>A 股子池穷举</td><td>127 个子集</td><td>7 只 A 股全部非空组合，跨境与黄金固定 → <b>池选择偏差未被穷举排除</b></td></tr>
+          <tr><td><code>experiments*.py</code> 静态槽位</td><td>205 个</td><td>16 个文件展开后的声明数，含基线与重复</td></tr>
+          <tr><td>V11 / V12 / V12-R2</td><td>714 / 1807 / 864</td><td>后续三轮；她要求“不能把 V12 计数当成项目全部尝试数”</td></tr>
+        </tbody>
+      </table>
+      <h3 class="sec" style="margin-top:16px">证据 ②：配对区块 bootstrap（<code>reports/overfitting_diagnostics.md</code>）</h3>
+      <p class="note" style="margin-bottom:8px">统一口径：次日开盘重放、单边 1bp 佣金 + 10bp 滑点、2014-01 ~ 2026-09-24。
+        区间为年化收益差（百分点），全部<b>跨 0</b>——即版本间的“提升”在条件重采样下都不显著。</p>
+      <table>
+        <thead><tr><th>候选 − 对照</th><th>实际年化差</th><th>20 日块 95% 区间</th><th>60 日块 95% 区间</th><th>读法</th></tr></thead>
+        <tbody>
+          <tr><td>v9.1 − v9</td><td>+0.89pp</td><td>[−1.40, +3.41]</td><td>[−1.18, +3.26]</td><td>跨 0，不显著</td></tr>
+          <tr><td>v9.2 − v9.1</td><td>−0.66pp</td><td>[−5.42, +4.08]</td><td>[−5.16, +3.77]</td><td>跨 0，<b>加了两条抄底通道后反而转负</b></td></tr>
+          <tr><td>只加 QVIX 通道 − v9.1</td><td>+0.96pp</td><td>[−1.06, +3.29]</td><td>[−0.64, +3.03]</td><td>跨 0</td></tr>
+          <tr><td>只加量能通道 − v9.1</td><td>−1.65pp</td><td>[−6.22, +2.69]</td><td>[−5.95, +2.30]</td><td>跨 0，且为负</td></tr>
+          <tr><td>v9.1 − 关掉全部抄底</td><td><span class="num-pos">+5.70pp</span></td><td><span class="num-pos">[+0.91, +11.71]</span></td><td><span class="num-pos">[+0.73, +11.60]</span></td>
+              <td><b>唯一一个区间不跨 0 的组件</b>——抄底是真正在干活的</td></tr>
+        </tbody>
+      </table>
+      <h3 class="sec" style="margin-top:16px">证据 ③：参数邻域不构成平台（<code>reports/parameter_stability.md</code>）</h3>
+      <table>
+        <thead><tr><th>版本</th><th>基线年化</th><th>邻居年化范围</th><th>最差邻居终值 / 基线</th></tr></thead>
+        <tbody>
+          <tr><td>v9</td><td>36.24%</td><td>31.39% ~ 36.78%（12 个邻居）</td><td><span class="cliff">63.1%</span></td></tr>
+          <tr><td>v9.1</td><td>37.13%</td><td>33.21% ~ 37.13%（14 个邻居）</td><td><span class="cliff">69.2%</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9;margin-top:8px">
+        她的原文结论：<b>“没有出现改变这些参数就使全程收益转负的情况；但十余年复利后，邻居终值可能比基线低约三成。
+        不能把‘仍然盈利’理解为‘参数影响很小’。”</b>
+        这比我们 L-11 的“参数高原”结论更保守——我们的平坦高原是在她的 v9 参数上测的，
+        而她换成<b>次日开盘 + 11bp</b> 的成本口径后，邻域就不再平坦了。
+        口径差异（收盘/次开、1bp/11bp）是两次结论不同的直接原因，也提醒我们：<b>我们 L-11 的“高原”结论建立在理想成交口径上。</b>
+      </p>
+      <h3 class="sec" style="margin-top:16px">证据 ④：她自己承认的两处结构性问题（我们 L-11 没查到的）</h3>
+      <ul class="tight">
+        <li><b>存活/上市偏差</b>：2014 年初她的池子里只有 2 只风险 ETF 够预热门槛，
+            直到 <b>2024-10-31</b> 才有全部 10 只风险 ETF 同时满足样本长度条件——早年回测不是“同一个 11 只池经历 12 年”。
+            她说“风险来自在 2026 年选定具体基金及资产主题，然后把这组存活到今天的标的向历史回看”，
+            且明确“本次不能量化它们究竟抬高了多少收益”。<b>这一条同样适用于我们的窄池 3</b>（纳指/黄金/创业也是在今天选的）。</li>
+        <li><b>影子账本不足以验证</b>：两份影子的净值完全相同、各只有一笔相同流水；
+            她指出 <code>v10/README.md</code> 曾提出“2-3 次触发复现约 69% 胜率后再议转正”——
+            她自评“即便假设独立、真实胜率 50%，3 次全赢的概率仍 12.5%，更不应忽略事件在同一危机中成簇”。</li>
+      </ul>
+      <p class="note" style="line-height:1.95;margin-top:10px">
+        <b>对我们的三条直接冲击</b>：<br>
+        ① <b>我们赢了 L-11 的措辞，输了 L-11 的口径</b>——她的邻域分析在成本后口径下更保守，
+        我们的“参数高原”是在理想成交下测的，应当补一次成本后复测。<br>
+        ② <b>存活偏差这条我们也得认</b>：她的自我指控（用今天的池子回看历史）镜像到我们身上同样成立，
+        我们分析报告 §局限里写的那句“选池偏差未完全分解”现在有了一个更具体的量化形式（早年池子根本没满员）。<br>
+        ③ <b>唯一被两边数据共同确认的有效组件是“深跌抄底”</b>——她的 bootstrap 唯一不跨 0 项（+5.7pp），
+        我们自己在 2026-08 的 L 组消融里也把恐慌抄底（μ−2.5σ 且 &lt;MA200 锁 7 天）留在了默认开启位。
+        这是目前两边唯一互相印证的机制，值得作为后续对比的重点。
+      </p>
+    </div>
+  </div>
+
   <!-- §5 结构对比 -->
   <div class="card">
     <div class="card-header"><h2>§5 · 策略结构对比</h2></div>
     <div style="padding:18px">
       <table>
-        <thead><tr><th style="width:110px">项目</th><th>v9（同行）</th><th class="col-mine">我的策略</th></tr></thead>
+        <thead><tr><th style="width:110px">项目</th><th>她的 v9<br><span class="note">我们 08-25 存档版</span></th>
+          <th>她的 V12-R2<br><span class="note">当前主推送</span></th><th class="col-mine">我的策略</th></tr></thead>
         <tbody>
-          <tr><td><b>标的池</b></td><td>11 只 regime 条件池：牛市 9 只（沪深300/有色/科创/中证2000/创新药等）/ 熊市 3 只，熊市 A 股制度性离场</td>
+          <tr><td><b>标的池</b></td>
+              <td>11 只 regime 条件池：牛市 9 只（沪深300/有色/科创/中证2000/创新药等）/ 熊市 3 只，熊市 A 股制度性离场</td>
+              <td>同左，一字未改（<b>池子一个月没动，动的是信号与风控</b>）</td>
               <td class="col-mine">窄池 3 只固定：纳指 513100 / 黄金 518880 / 创业板 159915</td></tr>
-          <tr><td><b>核心信号</b></td><td>mom20 动量 + WLS25 加权最小二乘回归打分，vol20 风险调整</td>
+          <tr><td><b>核心信号</b></td>
+              <td>WLS25 时间加权回归斜率 × 250 / vol20 打分，单报价</td>
+              <td>同 WLS25，但改为<b>最近 4 个实际报价的分数均值</b>（平滑），风险资产须满 270 个实际报价才参与排名</td>
               <td class="col-mine">20 日相对动量横截面排名，日频全仓 top1；纳指动量 = 0.3×513100 + 0.7×QQQ×USDCNY 混合</td></tr>
-          <tr><td><b>调仓</b></td><td>日频，buffer 2% 排名缓冲；永不空仓（never_empty）</td>
+          <tr><td><b>调仓</b></td>
+              <td>日频，buffer 2% 排名缓冲；永不空仓（never_empty）</td>
+              <td>日频；<b>分池缓冲仍 2%/3%/3%</b>，新增<b>健康轮动最短持有 2 个市场交易日</b>（风险退出不受限）；十年 310 次换仓</td>
               <td class="col-mine">日频；确认 2 天、最短持有 10 天、动量差 ≥1%；快速通道 gap≥3%；上证空仓 filter 可全空</td></tr>
-          <tr><td><b>风控</b></td><td>恐慌抄底（mom5≤-8% 且破 MA20% 锁 5~7 天）；单日急跌 4% 离场；熊市进场门槛 7%；MA250 牛熊分界</td>
+          <tr><td><b>风控</b></td>
+              <td>恐慌抄底（mom5≤-8% 且破 MA20% 锁 5~7 天）；单日急跌 4% 离场；熊市进场门槛 7%；MA250 牛熊分界</td>
+              <td>急跌阈值改为<b>该 ETF 上一实际报价日的 20/60 日波动较大者 × 1.4</b>（限制在 2%~10%）；
+                  <b>关闭 QVIX 抄底通道</b>，保留深跌 + 放量通道；抄底入场后锁 5 个交易日；
+                  牛熊分界从 MA250 改为 <b>MA180</b></td>
               <td class="col-mine">上证空仓 regime filter；止损 -5%（相对+绝对）；加速止盈 mom10&gt;μ+3σ；恐慌抄底 μ-2.5σ 且 &lt;MA200 锁 7 天</td></tr>
-          <tr><td><b>成本</b></td><td>单边万一，收盘成交</td><td class="col-mine">单边万一，收盘成交（同口径）</td></tr>
+          <tr><td><b>成本</b></td><td>单边万一，收盘成交</td>
+              <td>单边万一，收盘成交（<b>她自己另测 11bp 与延迟一个收盘</b>，见 §1b）</td>
+              <td class="col-mine">单边万一，收盘成交（同口径）</td></tr>
         </tbody>
       </table>
+      <p class="note" style="line-height:1.9;margin-top:10px">
+        <b>一个值得注意的收敛</b>：她 V12-R2 的四处改动里，有三处方向和我们一致——
+        ① 拉长最短持有（我们 10 天，她 2 天）以减少摩擦；② 急跌阈值按标的历史波动自适应；
+        ③ 砍掉 QVIX 这条外部依赖。<b>但两边的机制仍然完全不同</b>：她用“宽池 + 平滑 + 短持有”，
+        我们用“窄池 + 长持有 + 确认制”。这正好构成一组可对照的实验设计。
+      </p>
     </div>
   </div>
 
   <p class="note" style="text-align:center;margin-bottom:30px">
-    审计档案：<code>audit/审计结果清单.md</code>（v9 学习消融 · L 组归因 · L-11）｜
-    数据：<code>audit/out/v9_overfit.json</code> · <code>web/static/archive_data.js</code>｜
+    审计档案：<code>audit/审计结果清单.md</code>（v9 学习消融 · L 组归因 · L-11 · N 组同窗重跑）｜
+    复现脚本：<code>audit/n_peer_window.py</code>｜
+    她方快照：<code>git clone https://github.com/zzhu41/stock</code>（46 提交，HEAD 2026-09-28）｜
+    数据：<code>audit/out/v9_overfit.json</code> · <code>audit/out/n_peer_window.json</code> · <code>web/static/archive_data.js</code>｜
     v9 官方复现包：<code>backtest/v9_official/</code>
   </p>
 </div>

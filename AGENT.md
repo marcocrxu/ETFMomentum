@@ -28,6 +28,8 @@
 | `web/app.py` | Flask 路由 | 端口 **8082**（注意：CLAUDE.md 写的 8080 已过时）；`/mytrack/<key>` 私密对账页 |
 | `web/mytrack.py` | 实盘对账：手工记账 → 实盘净值 vs 策略同窗口 | 数据在 `web/mytrack_data.json`（已 gitignore） |
 | `web/pdfcompare.py` | 同行策略 PDF 对比（2026-08-25 新增） | 上传 PDF 落盘 `web/uploads/`(gitignore) → PyPDF2 提取 → claude(kimi k3) 结构化解析 → 对比表；「一键回测」复用 leaderboard 队列。任务存档 `web/pdfcompare_jobs.json`(gitignore) |
+| `web/templates/peer_v9.html` + `/peer/v9` 页 | **同行深度对比（2026-09-29 重写）** | 对手已从 v9 迭代到 **V12-R2**（仓库 github.com/zzhu41/stock）。同窗重跑我方首次落后 ~10pp；对方本人撤回前复权口径并自审承认无干净样本外。档案见 `audit/审计结果清单.md` **N 组**；脚本 `audit/n_peer_window.py`；结果 `audit/out/n_peer_window.json`。**引用对方任何旧数字前先看 N-2（口径作废）** |
+| `backtest/v9_official/` | 对方 v9 官方复现包（2026-08-25） | **已过时**，顶部 NOTE.md 有更新说明；旧数字（48.79% 等）属已撤回的前复权口径，勿再引用 |
 | `live/daily_run.py` | **生产实盘唯一入口（cron 14:50）** | 刷新 QQQ → LiveRunner → 推送 → 完整落盘 → 更新实际持仓。生产口径 = `SignalConfig()` 全默认值；`--no-push` 干跑不写状态 |
 | `live/runner.py` | 实盘 runner（被 daily_run 调用） | 腾讯实时价写今日行 → 调 `compute_signals`（320天预热+pre_days+pre_mats，与 bt_runner 逐位一致，2026-09-11 实测同输入同输出） |
 | `live/notify.py` | 推送与归档 | 钉钉/微信发送 + **完整消息落盘** `live/notify_log.jsonl` |
