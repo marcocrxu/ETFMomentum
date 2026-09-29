@@ -222,35 +222,47 @@
 
   <!-- §1b 执行敏感性 -->
   <div class="card">
-    <div class="card-header"><h2>§1b · 执行敏感性：她的版本也扛不住“晚一天 + 11bp”</h2></div>
+    <div class="card-header"><h2>§1b · 执行敏感性：四情景正面比（N-13，我方补齐 lag1 档）</h2></div>
     <div style="padding:18px">
       <p class="note" style="line-height:1.9;margin-bottom:8px">
-        她自己在 <code>v12_r2/REPORT.md</code> 与 <code>reports/correctness_review.md</code> 公布了四种情景。
-        <code>close_1bp</code> 是我们两边唯一可比的口径；另外三档是她主动做的压力测试。
+        此前这一栏只有她的数字——因为我们引擎没有"延迟一个收盘成交"档。
+        现在补上了：<code>audit/n_lag1_stress.py</code> 截获引擎自己的 actions，用
+        <code>tests/conftest.replay_nav</code> 做净值重放（<b>自检：不位移的重放与引擎 nav_log 误差 = 0</b>），
+        lag1 = 每个动作执行日 +1，成本档 = <code>slippage=0.0010</code>。
+        区间 2014-01-02 ~ 2026-09-24，年化按 244 观察日。
       </p>
       <table>
-        <thead><tr><th>情景（主样本窗 2016-07-07 ~ 2026-09-24）</th><th>我的策略</th><th>她的 V12-R2</th><th>她的 V12-C</th></tr></thead>
+        <thead><tr><th>情景</th><th class="col-mine">我方 年化/回撤/Calmar</th><th>V12-R2</th><th>我方 − 对方</th></tr></thead>
         <tbody>
-          <tr><td><b>close_1bp</b> 理想同收盘 · 单边万一 <span class="note">（唯一可比）</span></td>
-              <td class="col-mine">43.06% / -18.08%</td><td>53.13% / -20.56%</td><td>52.38% / -17.79%</td></tr>
-          <tr><td>close_11bp 同收盘 · 单边万一 + 10bp 滑点</td>
-              <td class="col-mine"><span class="note">我方引擎不含滑点，此档无法对照</span></td>
-              <td>45.38% / -21.97%</td><td>44.25% / -18.87%</td></tr>
+          <tr><td><b>close_1bp</b> 理想同收盘 · 单边万一</td>
+              <td class="col-mine">42.34% / <b>−19.45%</b> / 2.18</td><td><span class="num-pos">55.27%</span> / −20.56% / <b>2.69</b></td>
+              <td class="num-neg">−12.93pp</td></tr>
+          <tr><td>close_11bp 同收盘 · +10bp 滑点</td>
+              <td class="col-mine">37.61% / −22.25% / 1.69</td><td><span class="num-pos">47.86%</span> / −21.97% / 2.18</td>
+              <td class="num-neg">−10.24pp</td></tr>
           <tr><td>lag1_1bp 延迟一个收盘 · 单边万一</td>
-              <td class="col-mine"><span class="note">—</span></td>
-              <td><span class="cliff">37.61%</span> / -22.91%</td><td>39.71% / -26.82%</td></tr>
-          <tr><td>lag1_11bp 延迟一个收盘 · 单边万一 + 10bp</td>
-              <td class="col-mine"><span class="note">—</span></td>
-              <td><span class="cliff">30.65%</span> / -24.29%</td><td>32.25% / -29.70%</td></tr>
+              <td class="col-mine">32.54% / −29.02% / 1.12</td><td><span class="num-pos">39.72%</span> / −28.30% / 1.40</td>
+              <td class="num-neg">−7.18pp</td></tr>
+          <tr><td>lag1_11bp 延迟 + 11bp</td>
+              <td class="col-mine">28.13% / −29.94% / <b>0.94</b></td><td><span class="num-pos">33.01%</span> / −30.98% / <b>1.07</b></td>
+              <td class="num-neg">−4.88pp</td></tr>
         </tbody>
       </table>
       <ul class="tight">
-        <li><b>纯加成本（11bp）她也只掉 7.8pp</b>（53.13%→45.38%），仍高于我们的 43.06%。
-            也就是说：<b>即使替她扣掉我们没算的滑点，她在本窗仍然领先</b>。这一点必须承认。</li>
-        <li><b>但延迟一个收盘就崩 15.5pp</b>（53.13%→37.61%），比她自己的 v9 更敏感
-            （v9：36.63%→25.26%，掉 11.4pp）。她的日频换仓 310 次/十年，对成交时点高度敏感——
-            而 14:50 生成信号、当日收盘成交这个理想假设，她自己反复声明“不等于实际可成交收益”。</li>
-        <li>她的 lag1 是<b>次日收盘</b>，不是次日开盘、也不是 14:50 报价。真正的实盘档位两边都还缺。</li>
+        <li><b>③ 结论一（对我们不利，必须认）</b>：<b>我方的全部对外数字都偏高。</b>
+            光"晚一天成交"就掉 9.8pp 年化，回撤从 −19.45% 直接加深到 −29.02%。
+            四情景应当成为今后标准报数口径，不能再只报 close_1bp。</li>
+        <li><b>④ 结论二（对差距有利）</b>：<b>她比我们更脆。</b>
+            close_1bp→lag1_11bp 她掉 <b>22.26pp</b>，我方掉 14.21pp。
+            所说的"她领先 13pp"，<b>有很大一块是理想成交假设的产物</b>——
+            在最现实的情景下差距只剩 <b>4.88pp</b>，Calmar 0.94 vs 1.07 基本打平。</li>
+        <li><b>⑤ 结论三（两边都该警惕）</b>：lag1 下双方 Calmar 都掉到 ≈1、回撤都超过 −29%。
+            <b>两个策略的真实执行风险都比历史宣传大得多</b>，这也解释了为什么她反复声明
+            "lag1 不等于 14:50 可成交收益"。</li>
+        <li><span class="note">口径差异：对方 lag1 是引擎级参数（决策用 t−lag 数据、状态机按 lag 重算）；
+            我方是 replay-shift（决策序列取自原始路径、仅执行推迟一天）。信息→执行间隔同为 1 天，
+            但路径依赖未重算 —— 我方那两个 lag1 数字是<b>近似</b>。方向性结论不受影响：
+            对方四个情景是精确值，差距单调收窄（−12.93 → −10.24 → −7.18 → −4.88）。</span></li>
       </ul>
     </div>
   </div>
