@@ -377,6 +377,95 @@
     </div>
   </div>
 
+  <!-- §1d 收益归因 -->
+  <div class="card">
+    <div class="card-header"><h2>§1d · 收益来自哪里（N-11）— 她赢在池子宽度，我们赢在共同标的</h2></div>
+    <div style="padding:18px">
+      <p class="note" style="line-height:1.9;margin-bottom:10px">
+        把 2014-01-02~2026-09-24 每天的收益按<b>当日持仓</b>归集（日对数收益可加；她的引擎与我们的引擎
+        计时约定相同：当日收益归当日持仓，<code>holdings[t]</code> 记的是收盘调仓后的仓位，
+        故 <code>returns[t]</code> 归属 <code>holdings[t-1]</code>）。脚本 <code>audit/n_peer_attribution.py</code>。
+      </p>
+
+      <h3 class="sec">① 她的钱从哪来（V12-R2，总对数 5.585 = +26531%）</h3>
+      <table>
+        <thead><tr><th>标的</th><th>持有天数</th><th>天数占比</th><th>对数贡献</th><th>折合收益</th><th>日均</th><th>占总收益</th></tr></thead>
+        <tbody>
+          <tr><td>纳指 513100</td><td>1061</td><td>34.3%</td><td>1.421</td><td>+314%</td><td>13.4bp</td><td>25%</td></tr>
+          <tr><td>创业板 159915</td><td>293</td><td>9.5%</td><td>1.407</td><td>+308%</td><td><b>48.0bp</b></td><td>25%</td></tr>
+          <tr><td>港股创新药 513120</td><td>205</td><td>6.6%</td><td>0.754</td><td>+113%</td><td>36.8bp</td><td>14%</td></tr>
+          <tr><td>黄金 518880</td><td>562</td><td>18.2%</td><td>0.734</td><td>+108%</td><td>13.1bp</td><td>13%</td></tr>
+          <tr><td>有色 512400</td><td>201</td><td>6.5%</td><td>0.565</td><td>+76%</td><td>28.1bp</td><td>10%</td></tr>
+          <tr><td>中证500 510500</td><td>190</td><td>6.1%</td><td>0.289</td><td>+34%</td><td>15.2bp</td><td>5%</td></tr>
+          <tr><td>科创50 588080</td><td>39</td><td>1.3%</td><td>0.231</td><td>+26%</td><td><b>59.3bp</b></td><td>4%</td></tr>
+          <tr><td>沪深300 510300</td><td>241</td><td>7.8%</td><td>0.102</td><td>+11%</td><td>4.2bp</td><td>2%</td></tr>
+          <tr><td>中证2000 563300</td><td>45</td><td>1.5%</td><td>0.095</td><td>+10%</td><td>21.1bp</td><td>2%</td></tr>
+          <tr><td>货币 511880</td><td>114</td><td>3.7%</td><td>0.022</td><td>+2%</td><td>2.0bp</td><td>0%</td></tr>
+          <tr><td>红利低波 512890</td><td>145</td><td>4.7%</td><td><span class="num-neg">−0.034</span></td><td>−3%</td><td>−2.4bp</td><td>0%</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sec" style="margin-top:16px">② 我们的钱从哪来（我方窄池 3，总对数 4.481 = +8731%）</h3>
+      <table>
+        <thead><tr><th>标的</th><th>持有天数</th><th>天数占比</th><th>对数贡献</th><th>折合收益</th><th>日均</th><th>占总收益</th></tr></thead>
+        <tbody>
+          <tr><td><b>创业 159915</b></td><td>906</td><td>29.3%</td><td><b>2.509</b></td><td>+1129%</td><td>27.7bp</td><td><b>56%</b></td></tr>
+          <tr><td>纳指 513100</td><td>1004</td><td>32.4%</td><td>1.487</td><td>+342%</td><td>14.8bp</td><td>33%</td></tr>
+          <tr><td>黄金 518880</td><td>630</td><td>20.3%</td><td>0.494</td><td>+64%</td><td>7.9bp</td><td>11%</td></tr>
+          <tr><td>空仓</td><td>556</td><td>18.0%</td><td>−0.009</td><td>−1%</td><td>—</td><td>0%</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sec" style="margin-top:16px">③ 关键：她的超额 100% 来自"我们没有的标的"</h3>
+      <p class="note" style="line-height:1.9">
+        总差距 5.585 − 4.481 = <b>+1.104 对数（财富 +2.0 倍）</b>。拆开看：
+        <b>8 只池外标的合计 +2.002</b>（创新药 0.754 + 有色 0.565 + 中证500 0.289 + 科创50 0.231
+        + 沪深300 0.102 + 中证2000 0.095 − 红利低波 0.034），
+        而<b>在三只共同标的上我们反而多赚 0.90</b>（创业 +1.10、纳指 +0.07、黄金 −0.24）。
+        <b>共同标的上我们赢；她赢在池子宽度。</b>
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">④ 但这些标的放进我们引擎就废了</h3>
+      <p class="note" style="margin-bottom:6px">
+        同口径把我方宽池 7（本轮新跑，F4 已否决）也归因一遍：
+      </p>
+      <table>
+        <thead><tr><th>标的</th><th class="col-mine">我方宽池7 对数贡献</th><th class="col-mine">我方日均</th><th>她（同一标的）对数贡献</th><th>她日均</th></tr></thead>
+        <tbody>
+          <tr><td>有色 512400</td><td class="col-mine">+0.186</td><td class="col-mine">5.8bp</td><td>+0.565</td><td>28.1bp</td></tr>
+          <tr><td>科创50 588080</td><td class="col-mine">+0.056</td><td class="col-mine">3.4bp</td><td>+0.231</td><td>59.3bp</td></tr>
+          <tr><td>中证2000 563300</td><td class="col-mine"><span class="num-neg">−0.096</span></td><td class="col-mine">−13.0bp</td><td>+0.095</td><td>21.1bp</td></tr>
+          <tr><td>红利低波 512890</td><td class="col-mine"><span class="num-neg">−0.094</span></td><td class="col-mine">−3.1bp</td><td>−0.034</td><td>−2.4bp</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        宽池 7 总对数 3.423 vs 窄池 3 的 4.481（<b>−1.058</b>），而且扩池还<b>稀释了共同标的</b>
+        （创业 906→635 天、2.509→2.204；纳指 1004→799 天、1.487→0.961）。<br>
+        <b>→ F4「扩池恶化」复证，但原因不是"那些标的不赚钱"，而是"我方排名选不对它们"。</b>
+        她靠 WLS25 + 4 报价平滑能在这几只上赚 28~59bp/天，我方 mom20 排名只有 3~6bp/天。
+        <b>这才是两边真正的能力差 —— 在排名器，不在标的池。</b>
+      </p>
+
+      <h3 class="sec" style="margin-top:16px">⑤ 两个画像差异</h3>
+      <table>
+        <thead><tr><th></th><th class="col-mine">我方窄池 3</th><th>V12-R2</th></tr></thead>
+        <tbody>
+          <tr><td>收益集中度</td><td class="col-mine">创业一只占 <b>56%</b></td><td>最高单只 25%（纳指/创业板），前 4 只 = 77%</td></tr>
+          <tr><td>持有创业板</td><td class="col-mine">906 天 @ 27.7bp/天</td><td>293 天 @ <b>48.0bp/天</b></td></tr>
+          <tr><td>空仓/现金占比</td><td class="col-mine">18.0%</td><td>3.7%</td></tr>
+          <tr><td>交易日胜率</td><td class="col-mine"><b>44.4%</b></td><td><b>55.5%</b></td></tr>
+          <tr><td>前 10 日占正收益</td><td class="col-mine">5.1%</td><td>4.1%</td></tr>
+        </tbody>
+      </table>
+      <p class="note" style="line-height:1.9">
+        <b>我们赢在"拿得住"（同一标的持有时间是她的 3 倍），她赢在"挑得准"（单日效率是我们的 1.7 倍）。</b>
+        我们只在 44.4% 的交易日赚钱（靠少数大阳线），她 55.5% 为正。
+        双方前 10 个最好交易日都只占正对数收益的 4~5%，<b>都不是靠单日运气</b>。
+        三个时段（全期/长熊/第二轮牛）都是同一个模式：她在池外标的上的选择性 = 全部差距。
+      </p>
+    </div>
+  </div>
+
   <!-- §2 净值与周期 (v9 时期档案) -->
   <div class="card">
     <div class="card-header"><h2>§2 · 净值对比与周期归因（v9 时期档案 · 2014-01 ~ 2026-08）</h2></div>
