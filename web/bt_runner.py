@@ -13,7 +13,7 @@ try:
 except Exception:
     pass
 
-from strategy.signal import (SignalConfig, compute_signals,
+from strategy.signal import (SignalConfig, compute_signals, calc_wls_score,
                              calc_accel_thresholds, calc_mom60,
                              calc_vol20, calc_up_ratio20)
 from data.feed import TushareFeed
@@ -142,6 +142,10 @@ def run_backtest(params):
         panic_vol_lo=float(params.get("panic_vol_lo", 0.02)),
         panic_vol_hi=float(params.get("panic_vol_hi", 0.10)),
         panic_vol_src=str(params.get("panic_vol_src", "current20")),
+        score_wls=bool(params.get("score_wls", False)),
+        wls_window=int(params.get("wls_window", 25)),
+        wls_smooth=int(params.get("wls_smooth", 1)),
+        wls_ann=float(params.get("wls_ann", 250.0)),
         bull_pool_extra=str(params.get("bull_pool_extra", "")),
         bull_pool_rule=str(params.get("bull_pool_rule", "sh_mom20")),
         never_empty=bool(params.get("never_empty", False)),
@@ -273,6 +277,11 @@ def run_backtest(params):
         pre_mats["vol"] = calc_vol20(price_mat)[:, _pre_days:]
     if cfg.panic_vol_on and cfg.panic_vol_src in ("prior60", "prior_max20_60"):
         pre_mats["vol60"] = calc_vol20(price_mat, 60)[:, _pre_days:]
+    if cfg.score_wls:
+        # N-14: WLS 排名分在全量历史上算(用全量 vol20 做分母)再切片
+        _vol_full = calc_vol20(price_mat)
+        pre_mats["wls_score"] = calc_wls_score(
+            price_mat, cfg.wls_window, cfg.wls_smooth, cfg.wls_ann, _vol_full)[:, _pre_days:]
     if cfg.trend_ma > 0:
         _ma_full = np.full(price_mat.shape, np.nan)
         for _i in range(price_mat.shape[0]):

@@ -82,6 +82,14 @@ class SignalConfig:
     panic_vol_lo: float = 0.02     # 裁剪下限 (同行 2%)
     panic_vol_hi: float = 0.10     # 裁剪上限 (同行 10%)
     panic_vol_src: str = "current20"  # current20=当日VOL20; prior20/prior60/prior_max20_60=上一实际报价日
+    # ── WLS 排名器 (N-14, 2026-09-29, 事前注册 audit/n_wls_protocol.md; 默认关) ──
+    # score = (时间加权回归斜率/加权均价×250)/vol20, 再取近 smooth 个实际报价的分数均值。
+    # 只换"选谁", 所有阈值(min_gap/入场/离场/上证比较)仍用原始 mom20。
+    # 与已否决的 risk_adj_mom 不同: 那个分子是 20 日价差动量, 这个是回归斜率。
+    score_wls: bool = False
+    wls_window: int = 25           # 20/25/30 (对方 H=20, C/R2=25)
+    wls_smooth: int = 1            # 1..4 (对方 H=3, R2=4)
+    wls_ann: float = 250.0
     bull_pool_extra: str = ""      # 牛市附加池(标的名,逗号分隔): 仅牛市参与排名与持仓, 熊市制度性离场 (""=关闭; 学v9 regime条件池, 2026-08-25 消融)
     bull_pool_rule: str = "sh_mom20"  # 牛市判定规则 (bull_pool_extra 配套): sh_mom20=上证20日动量>0
     never_empty: bool = False      # 永不空仓 (v9式避险接盘): 去现金决策改持避险池(纳指/黄金)score最强, 允许负动量(跌最少者); 默认关, 2026-08-28 消融
@@ -154,6 +162,48 @@ def calc_up_ratio20(price_mat: np.ndarray) -> np.ndarray:
     for i in range(price_mat.shape[0]):
         up[i] = (pd.Series(price_mat[i]).pct_change() > 0).rolling(20).mean().values
     return up
+
+
+def calc_wls_score(price_mat: np.ndarray, window: int, smooth: int = 1,
+                   ann: float = 250.0, vol_mat: np.ndarray = None) -> np.ndarray:
+    """时间加权回归斜率打分 (N-14, 复刻同行 SCORE_WLS 口径; 默认关).
+
+    score = (斜率 / 加权均价 × ann) / vol20
+      斜率 = Σw(x-x̄)(y-ȳ)/Σw(x-x̄)², 权重 w_i = i+1 (越近越大)
+      smooth > 1 时对位移 k=1..smooth 的同样回归取均值 (近 N 个报价的分数均值)
+    vol 用**当日** vol20 (对方 current20 口径); 未传则现场算。
+    仅供排名, 阈值判断仍用原始 mom20。
+    """
+    n_etf, n = price_mat.shape
+    raw = np.full((n_etf, n), np.nan)
+    ks = range(smooth)
+    xs = np.arange(window, dtype=float)
+    wts = xs + 1.0
+    wsum = wts.sum()
+    wmx = float((wts * xs).sum() / wsum)
+    dxx = wts * (xs - wmx) ** 2
+    wsxx = float(dxx.sum())
+    for i in range(n_etf):
+        px = price_mat[i]
+        for t in range(window + smooth - 2, n):
+            vals = []
+            for k in ks:
+                end = t - k
+                seg = px[end - window + 1:end + 1]
+                if len(seg) < window or np.any(~np.isfinite(seg)):
+                    continue
+                wmy = float((wts * seg).sum() / wsum)
+                if wmy <= 0:
+                    continue
+                wsxy = float((wts * (xs - wmx) * (seg - wmy)).sum())
+                if wsxx <= 0:
+                    continue
+                vals.append((wsxy / wsxx) / wmy * ann)
+            if vals:
+                raw[i, t] = sum(vals) / len(vals)
+    v = vol_mat if vol_mat is not None else calc_vol20(price_mat)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where((v > 0) & np.isfinite(raw), raw / np.where(v > 0, v, 1.0), np.nan)
 
 
 def _compute_signals_topk(
@@ -761,7 +811,14 @@ def compute_signals(
         ti_raw = int(np.argmax(np.where(vm, ms, -np.inf)))
 
         # ── 排名分数: 多周期动量 → 风险调整波动率除法, 阈值判断仍用原始 ms ──
-        if cfg.multi_mom:
+        if cfg.score_wls:
+            # N-14: WLS 斜率打分 (全量历史预计算后切片, 防窗口起点冷启动)
+            score = (pre_mats or {}).get("wls_score")
+            if score is not None:
+                score = np.where(vm, score[:, t], np.nan)
+            else:
+                score = np.where(vm, ms, np.nan)
+        elif cfg.multi_mom:
             base = 3.0 * mom10_mat[:, t] + 2.0 * ms + mom60_mat[:, t]
             score = np.where(vm & ~np.isnan(mom10_mat[:, t]) & ~np.isnan(mom60_mat[:, t]), base, np.nan)
         else:
