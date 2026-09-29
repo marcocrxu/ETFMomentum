@@ -73,6 +73,15 @@ class SignalConfig:
     fast_min_hold: int = 0         # 快速通道(>3%切换)最短持有天数: 持仓不足N天不被例外动量差切走
                                    # (0=关闭=旧行为; 止损保护不受影响; E2候选开关, 先消融)
     panic_drop: float = 0.0        # 单日急跌离场: 持仓单日跌幅<=-X%当日清仓/切更强候选 (0=关闭; v9式左尾保险, 2026-08-25 消融)
+    # ── 波动缩放急跌阈值 (N-7, 2026-09-29): 复刻同行 V12-C 口径, 默认全关 ──
+    # 同行 panic_mode='volatility': thr = clip(K × VOL, 2%, 10%), VOL 取"上一实际报价日"的
+    # VOL20/VOL60/二者较大值 (prior_clock: previous actual quoted row of that same asset)。
+    # 我方 2026-08-25 只消融过"固定阈值"分支 (panic_drop=3/4/5), 未测过这一支。
+    panic_vol_on: bool = False     # True=急跌阈值改按波动缩放 (与 panic_drop 互斥, 本开关优先)
+    panic_vol_k: float = 1.4       # 风险倍数 (同行扫过 1/1.25/1.5/1.75/2/2.5)
+    panic_vol_lo: float = 0.02     # 裁剪下限 (同行 2%)
+    panic_vol_hi: float = 0.10     # 裁剪上限 (同行 10%)
+    panic_vol_src: str = "current20"  # current20=当日VOL20; prior20/prior60/prior_max20_60=上一实际报价日
     bull_pool_extra: str = ""      # 牛市附加池(标的名,逗号分隔): 仅牛市参与排名与持仓, 熊市制度性离场 (""=关闭; 学v9 regime条件池, 2026-08-25 消融)
     bull_pool_rule: str = "sh_mom20"  # 牛市判定规则 (bull_pool_extra 配套): sh_mom20=上证20日动量>0
     never_empty: bool = False      # 永不空仓 (v9式避险接盘): 去现金决策改持避险池(纳指/黄金)score最强, 允许负动量(跌最少者); 默认关, 2026-08-28 消融
@@ -131,11 +140,11 @@ def calc_mom60(price_mat: np.ndarray) -> np.ndarray:
     return m
 
 
-def calc_vol20(price_mat: np.ndarray) -> np.ndarray:
-    """20日日收益波动率 (risk_adj_mom 用)"""
+def calc_vol20(price_mat: np.ndarray, window: int = 20) -> np.ndarray:
+    """日收益波动率 (risk_adj_mom 用; window=20 为默认; N-7 加 window 参数以算 VOL60)"""
     vol = np.full(price_mat.shape, np.nan)
     for i in range(price_mat.shape[0]):
-        vol[i] = pd.Series(price_mat[i]).pct_change().rolling(20).std().values
+        vol[i] = pd.Series(price_mat[i]).pct_change().rolling(window).std().values
     return vol
 
 
@@ -525,10 +534,59 @@ def compute_signals(
 
     # ── 20日波动率 (风险调整动量 / 自适应止损 / 波动率缩放仓位 使用) ──
     vol_mat = np.full(price_mat.shape, np.nan)
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0:
+    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0 or cfg.panic_vol_on:
         vol_mat = (pre_mats or {}).get("vol")
         if vol_mat is None:
             vol_mat = calc_vol20(price_mat)
+
+    # ── 波动缩放急跌阈值 (N-7): thr[i,t] = clip(K × VOL, lo, hi), VOL 口径见 cfg.panic_vol_src ──
+    # "上一实际报价日" = 该标的最近一个有效报价行的 VOL (prior_clock, 绝不用当日/未来)。
+    panic_thr_mat = None
+    if cfg.panic_vol_on:
+        _src = cfg.panic_vol_src
+        if _src in ("prior20", "prior60", "prior_max20_60"):
+            _v20 = vol_mat
+            _v60 = (pre_mats or {}).get("vol60")
+            if _v60 is None:
+                _v60 = calc_vol20(price_mat, 60)
+            if _src == "prior20":
+                _base = _v20
+            elif _src == "prior60":
+                _base = _v60
+            else:
+                _base = np.fmax(_v20, _v60)
+            _cur = np.clip(cfg.panic_vol_k * _base, cfg.panic_vol_lo, cfg.panic_vol_hi)
+            panic_thr_mat = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _prev = np.nan
+                for _t in range(price_mat.shape[1]):
+                    panic_thr_mat[_i, _t] = _prev          # 先用上一报价日值
+                    if (not np.isnan(price_mat[_i, _t])
+                            and not np.isnan(_cur[_i, _t])):
+                        _prev = _cur[_i, _t]                # 本日是实际报价日 → 供明日使用
+        else:  # current20: 当日 VOL20 (同行 current20 口径)
+            panic_thr_mat = np.clip(cfg.panic_vol_k * vol_mat, cfg.panic_vol_lo, cfg.panic_vol_hi)
+
+    def _panic_thr_at(i, t):
+        """返回该标的当日急跌阈值(正数, 单位为%); None=不启用/无值。"""
+        if cfg.panic_vol_on:
+            if panic_thr_mat is None:
+                return None
+            v = panic_thr_mat[i, t]
+            return float(v) * 100.0 if not np.isnan(v) else None
+        if cfg.panic_drop > 0:
+            return float(cfg.panic_drop)
+        return None
+
+    def _panic_hit(i, t):
+        """持仓 i 在 t 日是否触发急跌离场。"""
+        thr = _panic_thr_at(i, t)
+        if thr is None:
+            return False
+        _p0 = price_mat[i, max(0, t - 1)]; _p1 = price_mat[i, t]
+        if np.isnan(_p0) or np.isnan(_p1) or _p0 <= 0:
+            return False
+        return (_p1 / _p0 - 1) * 100 <= -thr
 
     # ── 空仓停泊标的序列 (货基/国债; 不入排名池) ──
     bond_arr = (pre_mats or {}).get("park") if cfg.cash_park_code else None
@@ -996,11 +1054,9 @@ def compute_signals(
                 _ma = ma_gate_mat[ti, t]
                 if not np.isnan(_px) and not np.isnan(_ma) and _px <= _ma:
                     fast_gap = False
-            if cfg.panic_drop > 0:
-                _p0 = price_mat[pos, max(0, t - 1)]; _p1 = price_mat[pos, t]
-                if (not np.isnan(_p0) and not np.isnan(_p1) and _p0 > 0
-                        and (_p1 / _p0 - 1) * 100 <= -cfg.panic_drop):
-                    sw = True; np_pos = ti; streak = 0; reason = "单日急跌"
+            if (cfg.panic_drop > 0 or cfg.panic_vol_on) and _panic_hit(pos, t):
+                # 单日急跌 (固定阈值 或 波动缩放阈值, N-7): 切向当前更优候选
+                sw = True; np_pos = ti; streak = 0; reason = "单日急跌"
             if not sw and pnl <= stop_line(pos, t):
                 sw = True; np_pos = ti; streak = 0; reason = "止损"
             elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:
@@ -1033,10 +1089,8 @@ def compute_signals(
             # 有更优候选时走上面的"止损"切换; 无候选可切时清到空仓,
             # 不再硬扛 (2026-06 纳指 -9.79% 远超 -5% 线的成因)
             sw = True; np_pos = -1; streak = 0; reason = "绝对止损"
-        elif cfg.panic_drop > 0 and pos >= 0 and t >= crash_held_until:
-            _p0 = price_mat[pos, max(0, t - 1)]; _p1 = price_mat[pos, t]
-            if (not np.isnan(_p0) and not np.isnan(_p1) and _p0 > 0
-                    and (_p1 / _p0 - 1) * 100 <= -cfg.panic_drop):
+        elif (cfg.panic_drop > 0 or cfg.panic_vol_on) and pos >= 0 and t >= crash_held_until:
+            if _panic_hit(pos, t):
                 sw = True; np_pos = -1; streak = 0; reason = "单日急跌"
         elif (cfg.accel_enabled and pos >= 0
                 and etf_names[pos] not in {x.strip() for x in cfg.accel_exempt_names.split(",") if x.strip()}

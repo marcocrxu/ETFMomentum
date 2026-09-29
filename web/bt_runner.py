@@ -137,6 +137,11 @@ def run_backtest(params):
         nz_mom_qqq_on=bool(params.get("nz_mom_qqq_on", True)),
         nz_mom_qqq_w=float(params.get("nz_mom_qqq_w", 0.7)),
         panic_drop=float(params.get("panic_drop", 0.0)),
+        panic_vol_on=bool(params.get("panic_vol_on", False)),
+        panic_vol_k=float(params.get("panic_vol_k", 1.4)),
+        panic_vol_lo=float(params.get("panic_vol_lo", 0.02)),
+        panic_vol_hi=float(params.get("panic_vol_hi", 0.10)),
+        panic_vol_src=str(params.get("panic_vol_src", "current20")),
         bull_pool_extra=str(params.get("bull_pool_extra", "")),
         bull_pool_rule=str(params.get("bull_pool_rule", "sh_mom20")),
         never_empty=bool(params.get("never_empty", False)),
@@ -264,8 +269,10 @@ def run_backtest(params):
     pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, cfg)[:, _pre_days:]}
     if cfg.multi_mom:
         pre_mats["mom60"] = calc_mom60(price_mat)[:, _pre_days:]
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0:
+    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0 or cfg.panic_vol_on:
         pre_mats["vol"] = calc_vol20(price_mat)[:, _pre_days:]
+    if cfg.panic_vol_on and cfg.panic_vol_src in ("prior60", "prior_max20_60"):
+        pre_mats["vol60"] = calc_vol20(price_mat, 60)[:, _pre_days:]
     if cfg.trend_ma > 0:
         _ma_full = np.full(price_mat.shape, np.nan)
         for _i in range(price_mat.shape[0]):
