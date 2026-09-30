@@ -101,6 +101,10 @@ class SignalConfig:
     stop_vol_lo: float = 0.015
     stop_vol_hi: float = 0.10
     stop_vol_src: str = "prior20"
+    # ── 多周期动量加权 (N-24, 2026-09-30, 用户提议; 默认关) ──
+    # 格式 "5:w5,10:w10,15:w15,20:w20" (逗号分隔 周期:权重, 权重和应为1)。
+    # 非空时用加权动量**整体替换 ms**(排名/gap/入场动量比较); 默认 "" = 关闭=纯 mom20。
+    score_mom_mix: str = ""
     bull_pool_extra: str = ""      # 牛市附加池(标的名,逗号分隔): 仅牛市参与排名与持仓, 熊市制度性离场 (""=关闭; 学v9 regime条件池, 2026-08-25 消融)
     bull_pool_rule: str = "sh_mom20"  # 牛市判定规则 (bull_pool_extra 配套): sh_mom20=上证20日动量>0
     never_empty: bool = False      # 永不空仓 (v9式避险接盘): 去现金决策改持避险池(纳指/黄金)score最强, 允许负动量(跌最少者); 默认关, 2026-08-28 消融
@@ -188,6 +192,42 @@ def _prior_quote_shift(mat: np.ndarray, price_mat: np.ndarray) -> np.ndarray:
             if not np.isnan(price_mat[i, t]) and not np.isnan(mat[i, t]):
                 prev = mat[i, t]
     return out
+
+
+def calc_mom(price_mat: np.ndarray, window: int) -> np.ndarray:
+    """w 日价差动量 (%), 供多周期加权使用 (N-24)。"""
+    m = np.full(price_mat.shape, np.nan)
+    if window <= 0 or price_mat.shape[1] <= window:
+        return m
+    m[:, window:] = (price_mat[:, window:] / price_mat[:, :-window] - 1) * 100
+    return m
+
+
+def calc_mom_mix(price_mat: np.ndarray, spec: str) -> np.ndarray:
+    """多周期动量加权 (N-24): spec="5:0.05,10:0.15,15:0.20,20:0.60"。
+
+    任一**非零权重**分量为 NaN 时结果 NaN (保守: 预热不足不参与排名)。
+    """
+    parts = []
+    for tok in spec.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        w_s, wt_s = tok.split(":")
+        parts.append((int(w_s), float(wt_s)))
+    if not parts:
+        raise ValueError("score_mom_mix 为空")
+    total = sum(w for _, w in parts)
+    if abs(total - 1.0) > 1e-9:
+        raise ValueError("score_mom_mix 权重和必须为 1, 当前 %.4f" % total)
+    out = np.zeros(price_mat.shape)
+    bad = np.zeros(price_mat.shape, dtype=bool)
+    for w, wt in parts:
+        m = calc_mom(price_mat, w)
+        if wt > 0:
+            bad |= ~np.isfinite(m)
+        out += wt * np.nan_to_num(m, nan=0.0)
+    return np.where(bad, np.nan, out)
 
 
 def calc_wls_score(price_mat: np.ndarray, window: int, smooth: int = 1,
@@ -839,6 +879,13 @@ def compute_signals(
         hd = t - hs if pos >= 0 else 0
         pnl = (nav / hn - 1) * 100 if pos >= 0 and hn > 0 else 0
         ms = mom20_mat[:, t]; vm = ~np.isnan(ms)
+        # N-24: 多周期动量加权 (用户提议) —— 用加权动量**整体替换动量口径 ms**
+        # (排名 / 轮动 gap / 入场与空仓的动量比较全部随之改变;
+        #  显式读 mom10_mat·mom20_mat 的判据 —— 止损/加速止盈/恐慌抄底 —— 不受影响)
+        if cfg.score_mom_mix:
+            _mm = (pre_mats or {}).get("mom_mix")
+            if _mm is not None:
+                ms = _mm[:, t]; vm = ~np.isnan(ms)
 
         if not vm.any():
             pp = price_mat[pos, t] if pos >= 0 else np.nan

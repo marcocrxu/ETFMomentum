@@ -13,7 +13,7 @@ try:
 except Exception:
     pass
 
-from strategy.signal import (SignalConfig, compute_signals, calc_wls_score,
+from strategy.signal import (SignalConfig, compute_signals, calc_wls_score, calc_mom_mix,
                              calc_accel_thresholds, calc_mom60,
                              calc_vol20, calc_up_ratio20)
 from data.feed import TushareFeed
@@ -152,6 +152,7 @@ def run_backtest(params):
         stop_vol_lo=float(params.get("stop_vol_lo", 0.015)),
         stop_vol_hi=float(params.get("stop_vol_hi", 0.10)),
         stop_vol_src=str(params.get("stop_vol_src", "prior20")),
+        score_mom_mix=str(params.get("score_mom_mix", "")),
         bull_pool_extra=str(params.get("bull_pool_extra", "")),
         bull_pool_rule=str(params.get("bull_pool_rule", "sh_mom20")),
         never_empty=bool(params.get("never_empty", False)),
@@ -289,6 +290,9 @@ def run_backtest(params):
         _vol_full = calc_vol20(price_mat)
         pre_mats["wls_score"] = calc_wls_score(
             price_mat, cfg.wls_window, cfg.wls_smooth, cfg.wls_ann, _vol_full)[:, _pre_days:]
+    if cfg.score_mom_mix:
+        # N-24: 多周期加权动量, 全量历史算再切片
+        pre_mats["mom_mix"] = calc_mom_mix(price_mat, cfg.score_mom_mix)[:, _pre_days:]
     if cfg.score_smooth > 1:
         # N-20 P1-1: 打分平滑 —— 全量历史上算 mom20 的滚动均值再切片
         _smf = np.full(mom20_mat.shape, np.nan)
