@@ -208,9 +208,11 @@ def main():
 
     # 她持有创业板的日子 vs 我们持有创业板的日子: 这些天创业板分别涨多少
     def day_stats(hold, target):
+        # ⚠️ 2026-09-29 修正: 区间 (t-1 → t) 的收益由**当日持仓** hold[t] 赚取, 不是 hold[t-1]。
+        # 原写法 hold[t-1] 是 off-by-one, 曾导致 N-17 §4 误报"0.49 对数数据疑点"(实为我方脚本 bug)。
         tot, n = 0.0, 0
         for t in range(1, len(common)):
-            if hold[t - 1] == target:
+            if hold[t] == target:
                 d0, d1 = common[t - 1], common[t]
                 if d0 in csd2 and d1 in csd2:
                     tot += float(np.log(cyb.iloc[csd2[d1]] / cyb.iloc[csd2[d0]])); n += 1

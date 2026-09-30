@@ -146,6 +146,12 @@ def run_backtest(params):
         wls_window=int(params.get("wls_window", 25)),
         wls_smooth=int(params.get("wls_smooth", 1)),
         wls_ann=float(params.get("wls_ann", 250.0)),
+        score_smooth=int(params.get("score_smooth", 1)),
+        stop_vol_on=bool(params.get("stop_vol_on", False)),
+        stop_vol_k=float(params.get("stop_vol_k", 3.0)),
+        stop_vol_lo=float(params.get("stop_vol_lo", 0.015)),
+        stop_vol_hi=float(params.get("stop_vol_hi", 0.10)),
+        stop_vol_src=str(params.get("stop_vol_src", "prior20")),
         bull_pool_extra=str(params.get("bull_pool_extra", "")),
         bull_pool_rule=str(params.get("bull_pool_rule", "sh_mom20")),
         never_empty=bool(params.get("never_empty", False)),
@@ -273,7 +279,8 @@ def run_backtest(params):
     pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, cfg)[:, _pre_days:]}
     if cfg.multi_mom:
         pre_mats["mom60"] = calc_mom60(price_mat)[:, _pre_days:]
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0 or cfg.panic_vol_on:
+    if (cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0
+            or cfg.panic_vol_on or cfg.stop_vol_on):
         pre_mats["vol"] = calc_vol20(price_mat)[:, _pre_days:]
     if cfg.panic_vol_on and cfg.panic_vol_src in ("prior60", "prior_max20_60"):
         pre_mats["vol60"] = calc_vol20(price_mat, 60)[:, _pre_days:]
@@ -282,6 +289,14 @@ def run_backtest(params):
         _vol_full = calc_vol20(price_mat)
         pre_mats["wls_score"] = calc_wls_score(
             price_mat, cfg.wls_window, cfg.wls_smooth, cfg.wls_ann, _vol_full)[:, _pre_days:]
+    if cfg.score_smooth > 1:
+        # N-20 P1-1: 打分平滑 —— 全量历史上算 mom20 的滚动均值再切片
+        _smf = np.full(mom20_mat.shape, np.nan)
+        for _i in range(mom20_mat.shape[0]):
+            _smf[_i] = pd.Series(mom20_mat[_i]).rolling(cfg.score_smooth).mean().values
+        pre_mats["score_smooth"] = _smf[:, _pre_days:]
+    if cfg.stop_vol_on and cfg.stop_vol_src in ("prior60", "prior_max20_60"):
+        pre_mats["vol60"] = calc_vol20(price_mat, 60)[:, _pre_days:]
     if cfg.trend_ma > 0:
         _ma_full = np.full(price_mat.shape, np.nan)
         for _i in range(price_mat.shape[0]):

@@ -90,6 +90,17 @@ class SignalConfig:
     wls_window: int = 25           # 20/25/30 (对方 H=20, C/R2=25)
     wls_smooth: int = 1            # 1..4 (对方 H=3, R2=4)
     wls_ann: float = 250.0
+    # ── 打分平滑 (N-20 P1-1, 2026-09-29, 事前注册 audit/n_smooth_stopvol_protocol.md; 默认关) ──
+    # 排名分改为"最近 N 个交易日 mom20 的滚动均值"; **只影响选谁**, 阈值判断仍用原始 mom20。
+    score_smooth: int = 1          # 1=关闭(默认), >1=近 N 日 mom20 均值
+    # ── 波动化止损 (N-20 P1-3; 默认关) ──
+    # stop_vol_on 时止损线 = -clip(K × VOL, lo, hi), 替换固定 stop_loss;
+    # src=prior20 用"该标上一实际报价日"的 VOL20 (对方 prior_clock 语义), current20 用当日。
+    stop_vol_on: bool = False
+    stop_vol_k: float = 3.0
+    stop_vol_lo: float = 0.015
+    stop_vol_hi: float = 0.10
+    stop_vol_src: str = "prior20"
     bull_pool_extra: str = ""      # 牛市附加池(标的名,逗号分隔): 仅牛市参与排名与持仓, 熊市制度性离场 (""=关闭; 学v9 regime条件池, 2026-08-25 消融)
     bull_pool_rule: str = "sh_mom20"  # 牛市判定规则 (bull_pool_extra 配套): sh_mom20=上证20日动量>0
     never_empty: bool = False      # 永不空仓 (v9式避险接盘): 去现金决策改持避险池(纳指/黄金)score最强, 允许负动量(跌最少者); 默认关, 2026-08-28 消融
@@ -162,6 +173,21 @@ def calc_up_ratio20(price_mat: np.ndarray) -> np.ndarray:
     for i in range(price_mat.shape[0]):
         up[i] = (pd.Series(price_mat[i]).pct_change() > 0).rolling(20).mean().values
     return up
+
+
+def _prior_quote_shift(mat: np.ndarray, price_mat: np.ndarray) -> np.ndarray:
+    """把 mat 平移成"该标的**上一实际报价日**的值" (prior_clock 语义; 无前视)。
+
+    上一实际报价日 = 严格早于 t 的最近一个价格有限的日子。若此前无值则 NaN。
+    """
+    out = np.full(mat.shape, np.nan)
+    for i in range(mat.shape[0]):
+        prev = np.nan
+        for t in range(mat.shape[1]):
+            out[i, t] = prev
+            if not np.isnan(price_mat[i, t]) and not np.isnan(mat[i, t]):
+                prev = mat[i, t]
+    return out
 
 
 def calc_wls_score(price_mat: np.ndarray, window: int, smooth: int = 1,
@@ -584,7 +610,8 @@ def compute_signals(
 
     # ── 20日波动率 (风险调整动量 / 自适应止损 / 波动率缩放仓位 使用) ──
     vol_mat = np.full(price_mat.shape, np.nan)
-    if cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0 or cfg.panic_vol_on:
+    if (cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0
+            or cfg.panic_vol_on or cfg.stop_vol_on):
         vol_mat = (pre_mats or {}).get("vol")
         if vol_mat is None:
             vol_mat = calc_vol20(price_mat)
@@ -606,16 +633,23 @@ def compute_signals(
             else:
                 _base = np.fmax(_v20, _v60)
             _cur = np.clip(cfg.panic_vol_k * _base, cfg.panic_vol_lo, cfg.panic_vol_hi)
-            panic_thr_mat = np.full(price_mat.shape, np.nan)
-            for _i in range(price_mat.shape[0]):
-                _prev = np.nan
-                for _t in range(price_mat.shape[1]):
-                    panic_thr_mat[_i, _t] = _prev          # 先用上一报价日值
-                    if (not np.isnan(price_mat[_i, _t])
-                            and not np.isnan(_cur[_i, _t])):
-                        _prev = _cur[_i, _t]                # 本日是实际报价日 → 供明日使用
+            panic_thr_mat = _prior_quote_shift(_cur, price_mat)
         else:  # current20: 当日 VOL20 (同行 current20 口径)
             panic_thr_mat = np.clip(cfg.panic_vol_k * vol_mat, cfg.panic_vol_lo, cfg.panic_vol_hi)
+
+    # ── 波动化止损的波动尺度 (N-20 P1-3): prior20 用"上一实际报价日"的 VOL20 ──
+    stop_vol_mat = None
+    if cfg.stop_vol_on:
+        if cfg.stop_vol_src in ("prior20", "prior60", "prior_max20_60"):
+            _sb = vol_mat
+            if cfg.stop_vol_src in ("prior60", "prior_max20_60"):
+                _v60s = (pre_mats or {}).get("vol60")
+                if _v60s is None:
+                    _v60s = calc_vol20(price_mat, 60)
+                _sb = _v60s if cfg.stop_vol_src == "prior60" else np.fmax(vol_mat, _v60s)
+            stop_vol_mat = _prior_quote_shift(_sb, price_mat)
+        else:
+            stop_vol_mat = vol_mat
 
     def _panic_thr_at(i, t):
         """返回该标的当日急跌阈值(正数, 单位为%); None=不启用/无值。"""
@@ -699,7 +733,14 @@ def compute_signals(
     def stop_line(i, t):
         """止损线: stop_sigma>0 时 = -k×标的自身20日波动率(不同标的不同线);
         stop_sigma_floor=True 时固定线为下限(只放宽不收紧);
-        波动率缺失/非正时回退固定 stop_loss"""
+        波动率缺失/非正时回退固定 stop_loss。
+        N-20 P1-3: stop_vol_on 时改用 -clip(K×VOL, lo, hi), VOL 按 stop_vol_src 取当日/上一报价日。"""
+        if cfg.stop_vol_on and stop_vol_mat is not None:
+            _v = stop_vol_mat[i, t]
+            if not np.isnan(_v) and _v > 0:
+                _mag = min(max(cfg.stop_vol_k * _v * 100.0, cfg.stop_vol_lo * 100.0),
+                           cfg.stop_vol_hi * 100.0)
+                return -_mag
         if cfg.stop_sigma > 0 and not np.isnan(vol_mat[i, t]) and vol_mat[i, t] > 0:
             s = -cfg.stop_sigma * vol_mat[i, t] * 100.0
             return min(cfg.stop_loss, s) if cfg.stop_sigma_floor else s
@@ -822,7 +863,9 @@ def compute_signals(
             base = 3.0 * mom10_mat[:, t] + 2.0 * ms + mom60_mat[:, t]
             score = np.where(vm & ~np.isnan(mom10_mat[:, t]) & ~np.isnan(mom60_mat[:, t]), base, np.nan)
         else:
-            score = np.where(vm, ms, np.nan)
+            # N-20 P1-1: 打分平滑 —— 排名分改用"最近 N 日 mom20 均值"(阈值仍用原始 ms)
+            _sm = (pre_mats or {}).get("score_smooth") if cfg.score_smooth > 1 else None
+            score = np.where(vm, (_sm[:, t] if _sm is not None else ms), np.nan)
 
         if cfg.risk_adj_mom:
             v_t = vol_mat[:, t]
