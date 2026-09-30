@@ -1,0 +1,665 @@
+{
+ "protocol": "audit/n_decisive_protocol.md",
+ "grid": [
+  "mh2_cd1",
+  "mh2_cd2",
+  "mh3_cd1",
+  "mh3_cd2",
+  "mh5_cd1",
+  "mh5_cd2",
+  "mh7_cd1",
+  "mh7_cd2",
+  "mh2_cd1_gap1_fmh0",
+  "mh2_cd1_gap1_fmh2",
+  "mh2_cd1_gap2_fmh0",
+  "mh2_cd1_gap2_fmh2"
+ ],
+ "rows": [
+  {
+   "tag": "mh2_cd1",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 40.21,
+     "dd": -22.97,
+     "cal": 1.75,
+     "trades": 306
+    },
+    "2015长窗": {
+     "ann": 40.49,
+     "dd": -24.78,
+     "cal": 1.63,
+     "trades": 342
+    },
+    "2020短窗": {
+     "ann": 41.87,
+     "dd": -22.97,
+     "cal": 1.82,
+     "trades": 203
+    }
+   },
+   "stress": {
+    "ann": 30.39575808952122,
+    "dd": -27.433800044195266,
+    "cal": 1.1079674722624755
+   }
+  },
+  {
+   "tag": "mh2_cd2",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 46.09,
+     "dd": -17.69,
+     "cal": 2.61,
+     "trades": 264
+    },
+    "2015长窗": {
+     "ann": 48.39,
+     "dd": -18.26,
+     "cal": 2.65,
+     "trades": 295
+    },
+    "2020短窗": {
+     "ann": 48.92,
+     "dd": -19.62,
+     "cal": 2.49,
+     "trades": 176
+    }
+   },
+   "stress": {
+    "ann": 31.349590567767137,
+    "dd": -29.942165599306737,
+    "cal": 1.0470047820620225
+   }
+  },
+  {
+   "tag": "mh3_cd1",
+   "params": {
+    "min_hold": 3,
+    "confirm_days": 1
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 40.26,
+     "dd": -22.97,
+     "cal": 1.75,
+     "trades": 300
+    },
+    "2015长窗": {
+     "ann": 40.54,
+     "dd": -24.78,
+     "cal": 1.64,
+     "trades": 336
+    },
+    "2020短窗": {
+     "ann": 41.09,
+     "dd": -22.97,
+     "cal": 1.79,
+     "trades": 201
+    }
+   },
+   "stress": {
+    "ann": 29.810006145268588,
+    "dd": -27.433800044195287,
+    "cal": 1.0866160027865361
+   }
+  },
+  {
+   "tag": "mh3_cd2",
+   "params": {
+    "min_hold": 3,
+    "confirm_days": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 45.76,
+     "dd": -17.69,
+     "cal": 2.59,
+     "trades": 264
+    },
+    "2015长窗": {
+     "ann": 47.75,
+     "dd": -18.26,
+     "cal": 2.62,
+     "trades": 295
+    },
+    "2020短窗": {
+     "ann": 48.42,
+     "dd": -19.62,
+     "cal": 2.47,
+     "trades": 176
+    }
+   },
+   "stress": {
+    "ann": 30.79890946128383,
+    "dd": -29.94216559930678,
+    "cal": 1.028613289814845
+   }
+  },
+  {
+   "tag": "mh5_cd1",
+   "params": {
+    "min_hold": 5,
+    "confirm_days": 1
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 42.3,
+     "dd": -21.28,
+     "cal": 1.99,
+     "trades": 285
+    },
+    "2015长窗": {
+     "ann": 43.23,
+     "dd": -23.85,
+     "cal": 1.81,
+     "trades": 321
+    },
+    "2020短窗": {
+     "ann": 43.64,
+     "dd": -21.28,
+     "cal": 2.05,
+     "trades": 191
+    }
+   },
+   "stress": {
+    "ann": 31.92728310860451,
+    "dd": -29.41992131407336,
+    "cal": 1.0852266655564344
+   }
+  },
+  {
+   "tag": "mh5_cd2",
+   "params": {
+    "min_hold": 5,
+    "confirm_days": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 44.81,
+     "dd": -18.08,
+     "cal": 2.48,
+     "trades": 260
+    },
+    "2015长窗": {
+     "ann": 47.81,
+     "dd": -18.26,
+     "cal": 2.62,
+     "trades": 290
+    },
+    "2020短窗": {
+     "ann": 47.63,
+     "dd": -19.62,
+     "cal": 2.43,
+     "trades": 173
+    }
+   },
+   "stress": {
+    "ann": 30.60952673385986,
+    "dd": -29.94216559930679,
+    "cal": 1.022288338909211
+   }
+  },
+  {
+   "tag": "mh7_cd1",
+   "params": {
+    "min_hold": 7,
+    "confirm_days": 1
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 44.77,
+     "dd": -17.11,
+     "cal": 2.62,
+     "trades": 275
+    },
+    "2015长窗": {
+     "ann": 43.86,
+     "dd": -29.0,
+     "cal": 1.51,
+     "trades": 314
+    },
+    "2020短窗": {
+     "ann": 44.8,
+     "dd": -20.19,
+     "cal": 2.22,
+     "trades": 184
+    }
+   },
+   "stress": {
+    "ann": 30.42328119472415,
+    "dd": -29.264388558993016,
+    "cal": 1.0396007807713106
+   }
+  },
+  {
+   "tag": "mh7_cd2",
+   "params": {
+    "min_hold": 7,
+    "confirm_days": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 45.9,
+     "dd": -18.08,
+     "cal": 2.54,
+     "trades": 255
+    },
+    "2015长窗": {
+     "ann": 47.74,
+     "dd": -21.09,
+     "cal": 2.26,
+     "trades": 286
+    },
+    "2020短窗": {
+     "ann": 48.48,
+     "dd": -19.62,
+     "cal": 2.47,
+     "trades": 170
+    }
+   },
+   "stress": {
+    "ann": 29.201020935446742,
+    "dd": -29.94216559930677,
+    "cal": 0.9752474595933306
+   }
+  },
+  {
+   "tag": "mh2_cd1_gap1_fmh0",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 1.0,
+    "fast_min_hold": 0
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 40.21,
+     "dd": -22.97,
+     "cal": 1.75,
+     "trades": 306
+    },
+    "2015长窗": {
+     "ann": 40.49,
+     "dd": -24.78,
+     "cal": 1.63,
+     "trades": 342
+    },
+    "2020短窗": {
+     "ann": 41.87,
+     "dd": -22.97,
+     "cal": 1.82,
+     "trades": 203
+    }
+   },
+   "stress": {
+    "ann": 30.39575808952122,
+    "dd": -27.433800044195266,
+    "cal": 1.1079674722624755
+   }
+  },
+  {
+   "tag": "mh2_cd1_gap1_fmh2",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 1.0,
+    "fast_min_hold": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 40.21,
+     "dd": -22.97,
+     "cal": 1.75,
+     "trades": 306
+    },
+    "2015长窗": {
+     "ann": 40.49,
+     "dd": -24.78,
+     "cal": 1.63,
+     "trades": 342
+    },
+    "2020短窗": {
+     "ann": 41.87,
+     "dd": -22.97,
+     "cal": 1.82,
+     "trades": 203
+    }
+   },
+   "stress": {
+    "ann": 30.39575808952122,
+    "dd": -27.433800044195266,
+    "cal": 1.1079674722624755
+   }
+  },
+  {
+   "tag": "mh2_cd1_gap2_fmh0",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 2.0,
+    "fast_min_hold": 0
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 39.69,
+     "dd": -17.11,
+     "cal": 2.32,
+     "trades": 284
+    },
+    "2015长窗": {
+     "ann": 38.57,
+     "dd": -27.9,
+     "cal": 1.38,
+     "trades": 321
+    },
+    "2020短窗": {
+     "ann": 41.86,
+     "dd": -19.82,
+     "cal": 2.11,
+     "trades": 191
+    }
+   },
+   "stress": {
+    "ann": 29.142120475801605,
+    "dd": -29.19911246416601,
+    "cal": 0.9980481602502695
+   }
+  },
+  {
+   "tag": "mh2_cd1_gap2_fmh2",
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 2.0,
+    "fast_min_hold": 2
+   },
+   "windows": {
+    "默认窗": {
+     "ann": 39.69,
+     "dd": -17.11,
+     "cal": 2.32,
+     "trades": 284
+    },
+    "2015长窗": {
+     "ann": 38.57,
+     "dd": -27.9,
+     "cal": 1.38,
+     "trades": 321
+    },
+    "2020短窗": {
+     "ann": 41.86,
+     "dd": -19.82,
+     "cal": 2.11,
+     "trades": 191
+    }
+   },
+   "stress": {
+    "ann": 29.142120475801605,
+    "dd": -29.19911246416601,
+    "cal": 0.9980481602502695
+   }
+  }
+ ],
+ "baseline": {
+  "默认窗": [
+   45.51,
+   -18.08,
+   2.52
+  ],
+  "2015长窗": [
+   45.74,
+   -21.09,
+   2.17
+  ],
+  "2020短窗": [
+   48.36,
+   -19.62,
+   2.47
+  ]
+ },
+ "baseline_stress": [
+  28.13,
+  -29.94,
+  0.94
+ ],
+ "verdict": {
+  "mh2_cd1": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": false,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1
+   }
+  },
+  "mh2_cd2": {
+   "gates": {
+    "① 三窗皆不低基线": true,
+    "② 主窗 Calmar>=2.52": true,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": true,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 2
+   }
+  },
+  "mh3_cd1": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": false,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 3,
+    "confirm_days": 1
+   }
+  },
+  "mh3_cd2": {
+   "gates": {
+    "① 三窗皆不低基线": true,
+    "② 主窗 Calmar>=2.52": true,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": true,
+   "params": {
+    "min_hold": 3,
+    "confirm_days": 2
+   }
+  },
+  "mh5_cd1": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": false,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 5,
+    "confirm_days": 1
+   }
+  },
+  "mh5_cd2": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 5,
+    "confirm_days": 2
+   }
+  },
+  "mh7_cd1": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": true,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 7,
+    "confirm_days": 1
+   }
+  },
+  "mh7_cd2": {
+   "gates": {
+    "① 三窗皆不低基线": true,
+    "② 主窗 Calmar>=2.52": true,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": true,
+   "params": {
+    "min_hold": 7,
+    "confirm_days": 2
+   }
+  },
+  "mh2_cd1_gap1_fmh0": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": false,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 1.0,
+    "fast_min_hold": 0
+   }
+  },
+  "mh2_cd1_gap1_fmh2": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": false,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 1.0,
+    "fast_min_hold": 2
+   }
+  },
+  "mh2_cd1_gap2_fmh0": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 2.0,
+    "fast_min_hold": 0
+   }
+  },
+  "mh2_cd1_gap2_fmh2": {
+   "gates": {
+    "① 三窗皆不低基线": false,
+    "② 主窗 Calmar>=2.52": false,
+    "③ 主窗回撤<=19.08%": true,
+    "④ lag1_11bp 年化>=28.13 且回撤>=-30.94": true
+   },
+   "qualified": false,
+   "params": {
+    "min_hold": 2,
+    "confirm_days": 1,
+    "min_gap": 2.0,
+    "fast_min_hold": 2
+   }
+  }
+ },
+ "qualified_count": 3,
+ "trade_off": [
+  {
+   "tag": "mh2_cd1",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 40.21,
+   "stress_ann": 30.39575808952122
+  },
+  {
+   "tag": "mh3_cd1",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 40.26,
+   "stress_ann": 29.810006145268588
+  },
+  {
+   "tag": "mh5_cd1",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 42.3,
+   "stress_ann": 31.92728310860451
+  },
+  {
+   "tag": "mh5_cd2",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 44.81,
+   "stress_ann": 30.60952673385986
+  },
+  {
+   "tag": "mh7_cd1",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 44.77,
+   "stress_ann": 30.42328119472415
+  },
+  {
+   "tag": "mh2_cd1_gap1_fmh0",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 40.21,
+   "stress_ann": 30.39575808952122
+  },
+  {
+   "tag": "mh2_cd1_gap1_fmh2",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 40.21,
+   "stress_ann": 30.39575808952122
+  },
+  {
+   "tag": "mh2_cd1_gap2_fmh0",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 39.69,
+   "stress_ann": 29.142120475801605
+  },
+  {
+   "tag": "mh2_cd1_gap2_fmh2",
+   "lose_main": true,
+   "win_stress": true,
+   "main_ann": 39.69,
+   "stress_ann": 29.142120475801605
+  }
+ ]
+}
