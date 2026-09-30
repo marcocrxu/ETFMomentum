@@ -203,8 +203,13 @@ def calc_mom(price_mat: np.ndarray, window: int) -> np.ndarray:
     return m
 
 
-def calc_mom_mix(price_mat: np.ndarray, spec: str) -> np.ndarray:
+def calc_mom_mix(price_mat: np.ndarray, spec: str, blend=None) -> np.ndarray:
     """多周期动量加权 (N-24): spec="5:0.05,10:0.15,15:0.20,20:0.60"。
+
+    blend = (row_idx, other_prices_1d, weight): 把该行的**每个周期动量**与另一序列
+    同周期动量按 (1-w)·本序列 + w·另一序列 混合 —— 复刻生产的纳指 QQQ-CNY 混合口径
+    (bt_runner: mom20_mat[纳指] = (1-w)·513100动量 + w·QQQ-CNY动量, I-11 默认 w=0.7)。
+    **不传 blend 会丢掉 QQQ 混合, 使退化权重 20:1.00 不等于基线** (2026-09-30 修正的 bug)。
 
     任一**非零权重**分量为 NaN 时结果 NaN (保守: 预热不足不参与排名)。
     """
@@ -224,6 +229,11 @@ def calc_mom_mix(price_mat: np.ndarray, spec: str) -> np.ndarray:
     bad = np.zeros(price_mat.shape, dtype=bool)
     for w, wt in parts:
         m = calc_mom(price_mat, w)
+        if blend is not None:
+            _r, _other, _bw = blend
+            mo = calc_mom(np.asarray(_other, dtype=float)[None, :], w)[0]
+            m = m.copy()
+            m[_r] = (1.0 - _bw) * m[_r] + _bw * mo
         if wt > 0:
             bad |= ~np.isfinite(m)
         out += wt * np.nan_to_num(m, nan=0.0)
@@ -231,7 +241,7 @@ def calc_mom_mix(price_mat: np.ndarray, spec: str) -> np.ndarray:
 
 
 def calc_wls_score(price_mat: np.ndarray, window: int, smooth: int = 1,
-                   ann: float = 250.0, vol_mat: np.ndarray = None) -> np.ndarray:
+                   ann: float = 250.0, vol_mat: np.ndarray = None, blend=None) -> np.ndarray:
     """时间加权回归斜率打分 (N-14, 复刻同行 SCORE_WLS 口径; 默认关).
 
     score = (斜率 / 加权均价 × ann) / vol20
@@ -269,7 +279,46 @@ def calc_wls_score(price_mat: np.ndarray, window: int, smooth: int = 1,
                 raw[i, t] = sum(vals) / len(vals)
     v = vol_mat if vol_mat is not None else calc_vol20(price_mat)
     with np.errstate(divide='ignore', invalid='ignore'):
-        return np.where((v > 0) & np.isfinite(raw), raw / np.where(v > 0, v, 1.0), np.nan)
+        sc = np.where((v > 0) & np.isfinite(raw), raw / np.where(v > 0, v, 1.0), np.nan)
+    if blend is not None:
+        # N-14 修正: 该行的打分与另一序列(QQQ-CNY)的同样打分混合, 复刻生产纳指口径
+        _r, _other, _bw = blend
+        _op = np.asarray(_other, dtype=float)[None, :]
+        _ov = calc_vol20(_op)
+        _raw2 = _wls_raw(_op, window, smooth, ann)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            _sc2 = np.where((_ov > 0) & np.isfinite(_raw2), _raw2 / np.where(_ov > 0, _ov, 1.0), np.nan)
+        sc = sc.copy()
+        sc[_r] = (1.0 - _bw) * sc[_r] + _bw * _sc2[0]
+    return sc
+
+
+def _wls_raw(price_mat: np.ndarray, window: int, smooth: int, ann: float) -> np.ndarray:
+    """WLS 斜率/加权均价×ann (打分分子, 未除 vol) —— 供 calc_wls_score 与混合口径复用。"""
+    n_etf, n = price_mat.shape
+    raw = np.full((n_etf, n), np.nan)
+    xs = np.arange(window, dtype=float)
+    wts = xs + 1.0
+    wsum = wts.sum()
+    wmx = float((wts * xs).sum() / wsum)
+    wsxx = float((wts * (xs - wmx) ** 2).sum())
+    for i in range(n_etf):
+        px = price_mat[i]
+        for t in range(window + smooth - 2, n):
+            vals = []
+            for k in range(smooth):
+                end = t - k
+                seg = px[end - window + 1:end + 1]
+                if len(seg) < window or np.any(~np.isfinite(seg)):
+                    continue
+                wmy = float((wts * seg).sum() / wsum)
+                if wmy <= 0 or wsxx <= 0:
+                    continue
+                wsxy = float((wts * (xs - wmx) * (seg - wmy)).sum())
+                vals.append((wsxy / wsxx) / wmy * ann)
+            if vals:
+                raw[i, t] = sum(vals) / len(vals)
+    return raw
 
 
 def _compute_signals_topk(

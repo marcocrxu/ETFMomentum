@@ -259,6 +259,7 @@ def run_backtest(params):
     # w = QQQ 权重 (0.7 = 70% QQQ + 30% ETF); 信号用混合动量, 净值/止损仍按 513100 成交价
     _nz_on = bool(cfg.nz_mom_qqq_on)
     _nz_w = min(max(float(cfg.nz_mom_qqq_w), 0.0), 1.0)
+    _nz_blend = None      # (row_idx, qqq_cny_series, w) —— 供 WLS/多周期打分复用同一混合口径
     if _nz_on and _nz_w > 0 and "纳指" in etf_names:
         from data.usfeed import load_qqq_cny, align_to_cn
         _qq = align_to_cn(_all_full, load_qqq_cny())
@@ -272,6 +273,7 @@ def run_backtest(params):
         _nz_i = etf_names.index("纳指")
         mom20_mat[_nz_i] = (1 - _nz_w) * mom20_mat[_nz_i] + _nz_w * _qm20
         mom10_mat[_nz_i] = (1 - _nz_w) * mom10_mat[_nz_i] + _nz_w * _qm10
+        _nz_blend = (_nz_i, _qq, _nz_w)
 
     # 从用户起始日重新跑模拟 (动量已预热)
     _p_user = price_mat[:, _pre_days:]
@@ -289,10 +291,12 @@ def run_backtest(params):
         # N-14: WLS 排名分在全量历史上算(用全量 vol20 做分母)再切片
         _vol_full = calc_vol20(price_mat)
         pre_mats["wls_score"] = calc_wls_score(
-            price_mat, cfg.wls_window, cfg.wls_smooth, cfg.wls_ann, _vol_full)[:, _pre_days:]
+            price_mat, cfg.wls_window, cfg.wls_smooth, cfg.wls_ann, _vol_full,
+            blend=_nz_blend)[:, _pre_days:]
     if cfg.score_mom_mix:
         # N-24: 多周期加权动量, 全量历史算再切片
-        pre_mats["mom_mix"] = calc_mom_mix(price_mat, cfg.score_mom_mix)[:, _pre_days:]
+        pre_mats["mom_mix"] = calc_mom_mix(
+            price_mat, cfg.score_mom_mix, blend=_nz_blend)[:, _pre_days:]
     if cfg.score_smooth > 1:
         # N-20 P1-1: 打分平滑 —— 全量历史上算 mom20 的滚动均值再切片
         _smf = np.full(mom20_mat.shape, np.nan)
