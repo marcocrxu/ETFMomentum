@@ -82,7 +82,47 @@ def _roll_hilo(arr: np.ndarray, w: int):
 CRASH_DIAG = []
 
 
-def _make_crash_eval(cfg, calc_threshold, diag):
+def _make_mom5_series(cfg, cyb_idx_p, sh_idx_p):
+    """N-38: 生成 (tf)->(mom5_pct, mom5_z) 求值器所需的 5 日动量序列。
+
+    口径约定 (与 mom10/MA200 一致, 全部无前视):
+      - mom5[t] = px[t]/px[t-5]-1, 单位 %
+      - z[t]    = mom5[t] / σ5[t], σ5 = mom5 **当日之前**的样本标准差 (排除第 t 日,
+                  与 calc_threshold 的 arr[:t] 口径一致); 样本 <60 时 z 记 None
+    返回 dict: {"cyb": fn, "sh": fn, "mom5_cyb": arr, "z_cyb": arr, ...} 供两个分支共用。
+    """
+    span = max(5, int(getattr(cfg, "crash_mom5_span", 5) or 5))
+
+    def _mom5_z(px):
+        px = np.asarray(px, dtype=float)
+        n = len(px)
+        m5 = np.full(n, np.nan)
+        if n > span:
+            m5[span:] = (px[span:] / px[:-span] - 1) * 100
+        z = np.full(n, np.nan)
+        s = pd.Series(m5)
+        # shift(1): 只用截至 t-1 的样本估 σ, 第 t 日自身不参与, 避免同日后视
+        sd = s.rolling(60, min_periods=60).std().shift(1).values
+        with np.errstate(divide="ignore", invalid="ignore"):
+            z = np.where((~np.isnan(sd)) & (sd > 1e-12), m5 / sd, np.nan)
+        return m5, z
+
+    m5_c, z_c = _mom5_z(cyb_idx_p)
+    m5_s, z_s = _mom5_z(sh_idx_p)
+
+    def _mk(m5, z):
+        def fn(tf):
+            if tf >= len(m5) or np.isnan(m5[tf]):
+                return None, None
+            zv = None if (tf >= len(z) or np.isnan(z[tf])) else float(z[tf])
+            return float(m5[tf]), zv
+        return fn
+
+    return dict(cyb=_mk(m5_c, z_c), sh=_mk(m5_s, z_s),
+                mom5_cyb=m5_c, z_cyb=z_c, mom5_sh=m5_s, z_sh=z_s)
+
+
+def _make_crash_eval(cfg, calc_threshold, diag, _moments=None):
     """恐慌抄底判定的**三态**求值器 (2026-10-15 事故防复发)。
 
     旧写法 `mom < th and px < ma` 在任一项为 NaN 时整体为 False, 与"条件不成立"
@@ -90,8 +130,22 @@ def _make_crash_eval(cfg, calc_threshold, diag):
     全都不响 (NaN 比较在 IEEE 754 下合法且静默)。这里把三态显式化:
     返回 True=触发 / False=不触发 / None=**无法判定**(缺数据, 已记入 diag)。
     引擎对 None 的行为与旧版一致(不触发, 保证基线逐分不变), 但调用方可据此告警。
+
+    N-38: cfg.crash_mom5_mode 非空时, 把「5 日跌幅」接进判据 (默认空 = 老行为逐分不变)。
+    `_moments` 是 (apply(cfg)->evaluator) 的延迟绑定器: 6 日动量与 σ5 都需要完整价格序列,
+    而 800 / 1400 两个 compute_signals 分支各自持有 cyb/sh 指数序列, 故按分支注入。
     """
     _hl_on = float(getattr(cfg, "crash_hl_win", 0) or 0) > 0
+    _mode = str(getattr(cfg, "crash_mom5_mode", "") or "")
+    _pct = float(getattr(cfg, "crash_mom5_pct", -8.0) or -8.0)
+    _z = float(getattr(cfg, "crash_mom5_z", -2.0) or -2.0)
+    _mom5_fn = None
+    if _mode and _moments is not None:
+        _mom5_fn = _moments(cfg)          # 分支内绑定: (tf)->(mom5%, mom5_z) 或 (None,None)
+    elif _mode:
+        # 调用方未注入序列 → 视为无法判定, 显式记 diag 而不是静默返回不触发
+        _mom5_fn = lambda tf: (None, None)
+    _NOM5 = "缺5日动量序列(N-38 未注入)"
 
     def _eval(mom10, ma200, px, tf, label, hl=None):
         if tf >= len(mom10) or tf >= len(px) or tf >= len(ma200):
@@ -102,7 +156,45 @@ def _make_crash_eval(cfg, calc_threshold, diag):
             th = calc_threshold(mom10, tf, cfg.crash_sigma)
             if th is None:
                 return None                      # 阈值样本<60: 预热期, 非异常
-            if not (mv < th and pv < av):
+            # ── N-38 5 日跌幅接入 (AND 语义: 收紧) ──
+            if _mode in ("add", "repl", "zs"):
+                m5, m5z = _mom5_fn(tf, label)
+                if m5 is None:
+                    diag.append((tf, label, _NOM5))
+                    return None
+                if _mode == "add":
+                    if not (mv < th and pv < av):
+                        return False
+                    if m5 > _pct:                # 5 日跌幅不够深
+                        return False
+                elif _mode == "repl":
+                    if not (m5 <= _pct and pv < av):
+                        return False
+                elif _mode == "zs":
+                    if m5z is None:
+                        diag.append((tf, label, _NOM5))
+                        return None
+                    if not (m5z <= _z and pv < av):
+                        return False
+            # ── N-39 5 日跌幅 OR 接入 (放宽: 任一通道成立即抄底) ──
+            elif _mode in ("or_deep", "or_ma", "or_z"):
+                m5, m5z = _mom5_fn(tf, label)
+                if m5 is None:
+                    diag.append((tf, label, _NOM5))
+                    return None
+                _orig = bool(mv < th and pv < av)
+                if _mode == "or_deep":
+                    _alt = bool(m5 <= _pct and pv < av)
+                elif _mode == "or_ma":
+                    _alt = bool(m5 <= _pct)
+                else:  # or_z
+                    if m5z is None:
+                        diag.append((tf, label, _NOM5))
+                        return None
+                    _alt = bool(m5z <= _z and pv < av)
+                if not (_orig or _alt):
+                    return False
+            elif not (mv < th and pv < av):
                 return False
             # ── N-30 高低点结构门 (闸门只在"动量+年线"已成立后才判定, 不改变原语义) ──
             if hl is None or not _hl_on:
@@ -196,6 +288,17 @@ class SignalConfig:
     crash_off_low_max: float = 0.0 # 离底门: 距窗口低点涨幅 ≤ 此值(%) 才抄底 (0=不限)
     # ── B4 抄底再入场闸门 (N-31, 默认关): 审计清单最高优先级未完成项 ──
     crash_reentry_gate: bool = False  # 抄底仓被止损后, 须等恐慌条件解除(crash_now 转 False)才准再抄底
+    # ── N-38 抄底「5 日跌幅」接入 (2026-11-02, 用户提议; 默认全关 = 生产基线逐分不变) ──
+    # 同行 V12-R2 用 min_hold=2 / switch_confirm=1 的"果断"抄底, 其门槛是绝对百分比
+    # (MOM5<=-8% 且 距MA250<-20%)。我方是 mom10 z 值 + MA200 的统计相对口径。
+    # 三种接入互斥, 一次只能启用一种:
+    #   add   = 原条件 AND (MOM5 <= crash_mom5_pct)      [增量门]
+    #   repl  = (MOM5 <= crash_mom5_pct) AND 收盘<MA200  [替代 mom10 条件]
+    #   zs    = (MOM5/MOM5的滚动σ <= crash_mom5_z后保留) 见 _make_crash_eval
+    crash_mom5_mode: str = ""      # ""=关闭 / "add" / "repl" / "zs"
+    crash_mom5_span: int = 5       # 短窗口跨度(交易日), 固定 5 (同行 MOM5 口径)
+    crash_mom5_pct: float = -8.0   # add/repl 的 5 日跌幅阈值(%), 如 -8 表示 MOM5<=-8%
+    crash_mom5_z: float = -2.0     # zs 模式的 z 门槛 (MOM5 用当日之前的滚动 σ5 标准化)
     # ── N-32 N 日高低点结构离场 (默认全关 = 生产基线逐分不变) ──
     exit_hl_win: int = 0           # 结构离场窗口(交易日): 60≈3个月 / 120≈6个月; 0=关闭
     exit_dd_high: float = 0.0      # 回撤离场: 现价距 N 日最高点回撤 ≥ 此值(%) 即离场 (0=关)
@@ -554,7 +657,20 @@ def _compute_signals_topk(
         else:
             return valid.mean() + sigma_val * valid.std()
 
-    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG)
+    _m5 = (_make_mom5_series(cfg, cyb_idx_p, sh_idx_p)
+           if str(getattr(cfg, "crash_mom5_mode", "") or "") else None)
+
+    def _moments(tag):
+        """N-38: 把 5 日动量绑到当前分支的指数序列上 (cyb/sh 分别注入)。"""
+        def binder(_cfg):
+            if _m5 is None:
+                return lambda tf, _lb=None: (None, None)
+            # label 区分 "上证指数" / "创业板指": 5 日动量必须用各自指数的序列
+            return lambda tf, _lb=None: _m5["sh" if (_lb and "上证" in _lb) else "cyb"](tf)
+        return binder
+
+    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG,
+                                   _moments=_moments("cyb"))
 
     sw_ = 10
     _nf = len(cyb_idx_p)
@@ -790,7 +906,20 @@ def compute_signals(
         else:
             return valid.mean() + sigma_val * valid.std()
 
-    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG)
+    _m5 = (_make_mom5_series(cfg, cyb_idx_p, sh_idx_p)
+           if str(getattr(cfg, "crash_mom5_mode", "") or "") else None)
+
+    def _moments(tag):
+        """N-38: 把 5 日动量绑到当前分支的指数序列上 (cyb/sh 分别注入)。"""
+        def binder(_cfg):
+            if _m5 is None:
+                return lambda tf, _lb=None: (None, None)
+            # label 区分 "上证指数" / "创业板指": 5 日动量必须用各自指数的序列
+            return lambda tf, _lb=None: _m5["sh" if (_lb and "上证" in _lb) else "cyb"](tf)
+        return binder
+
+    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG,
+                                   _moments=_moments("cyb"))
 
     # ── 恐慌抄底: 10日动量 for 399006 + 000001 ──
     # cyb_idx_p/sh_idx_p 为完整历史序列(含预热), 决策时用 tf = t + pre_days 访问,

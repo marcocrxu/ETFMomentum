@@ -94,6 +94,10 @@ def run_backtest(params):
         crash_dd_min=float(params.get("crash_dd_min", 0.0)),
         crash_off_low_max=float(params.get("crash_off_low_max", 0.0)),
         crash_reentry_gate=bool(params.get("crash_reentry_gate", False)),
+        # N-38 抄底 5 日跌幅接入 (默认全关 = 生产基线逐分不变)
+        crash_mom5_mode=str(params.get("crash_mom5_mode", "") or ""),
+        crash_mom5_pct=float(params.get("crash_mom5_pct", -8.0)),
+        crash_mom5_z=float(params.get("crash_mom5_z", -2.0)),
         exit_hl_win=int(params.get("exit_hl_win", 0)),
         exit_dd_high=float(params.get("exit_dd_high", 0.0)),
         exit_break_low=bool(params.get("exit_break_low", False)),
