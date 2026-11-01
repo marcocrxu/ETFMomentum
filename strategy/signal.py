@@ -1,8 +1,144 @@
 """核心信号函数 — 回测和实盘共用同一套逻辑"""
+import warnings
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
+
+
+def _rolling_mean_valid(arr: np.ndarray, w: int) -> np.ndarray:
+    """按**该标的自身有效报价**计算 w 期均线, NaN 空洞不再向内扩散。
+
+    口径: 第 i 位的均线 = 截至 i 的最后 w 个有效报价之均值 (i 有效时即通常
+    rolling(w) 窗口)。无空洞时与 pd.Series(arr).rolling(w).mean() 逐点相同,
+    仅在存在缺行/多行空洞时填补 NaN。"""
+    a = np.asarray(arr, dtype=float)
+    out = pd.Series(a).rolling(w).mean().values
+    if not np.isnan(out).any():
+        return out
+    valid = ~np.isnan(a)
+    if valid.sum() < w:
+        return out
+    vpos = np.flatnonzero(valid)
+    cv = np.concatenate([[0.0], np.cumsum(a[vpos])])   # cv[k] = 前 k 个有效报价之和
+    rank = np.cumsum(valid) - 1          # 每个位置"最后一个有效报价"的序号
+    fill = np.full(len(a), np.nan)
+    ok = rank >= w - 1
+    r = rank[ok]
+    fill[ok] = (cv[r + 1] - cv[r + 1 - w]) / w
+    return np.where(np.isnan(out) & ~np.isnan(fill), fill, out)
+
+
+def _ma_safe(price: np.ndarray, w: int, ma: np.ndarray, tag: str) -> np.ndarray:
+    """长均线防空洞: MA 出现 NaN(行情缺行/多余行导致)时按有效报价回填并告警。
+
+    此前 NaN MA 会让 `现价 < MA` 恒为 False, 静默否决恐慌抄底等依赖 MA 的分支
+    (2026-10-15 事故: 000001.SH 一条周六脏行 → 创业板指 MA200 全 NaN 一个月,
+    10-14 该出的恐慌抄底被吞掉)。"""
+    base = pd.Series(price).rolling(w).mean().values if ma is None else np.asarray(ma, dtype=float)
+    holes = np.isnan(base)
+    if not holes.any():
+        return base
+    fill = _rolling_mean_valid(price, w)
+    usable = holes & ~np.isnan(fill)
+    if usable.any():
+        _tail = np.flatnonzero(usable)[-1]
+        warnings.warn("数据告警: %s MA%d 有 %d 处 NaN 空洞(行情缺行/多余行), "
+                      "已按有效报价回填, 最近一处 index=%d; 请检查数据完整性"
+                      % (tag, w, int(usable.sum()), int(_tail)), RuntimeWarning)
+        return np.where(usable, fill, base)
+    return base
+
+
+def _roll_hilo(arr: np.ndarray, w: int):
+    """(截至当日的) w 日最高/最低价 —— N-30 恐慌抄底高低点结构门。
+
+    与 `_rolling_mean_valid` 同口径: 第 i 位的 HH/LL = 截至 i 的最后 w 个**有效报价**
+    的最高/最低 (i 有效时即通常 rolling(w) 窗口)。无空洞时与 pandas rolling 逐点相同,
+    仅在缺行/多行空洞时按有效报价回填, 避免 NaN 让闸门静默失效。
+    """
+    a = np.asarray(arr, dtype=float)
+    hh = pd.Series(a).rolling(w).max().values
+    ll = pd.Series(a).rolling(w).min().values
+    if not (np.isnan(hh).any() or np.isnan(ll).any()):
+        return hh, ll
+    valid = ~np.isnan(a)
+    if valid.sum() < w:
+        return hh, ll
+    vals = a[valid]
+    hit = np.cumsum(valid) - 1                 # 每个位置"最后一个有效报价"的序号
+    fill_h = np.full(len(a), np.nan)
+    fill_l = np.full(len(a), np.nan)
+    for i in np.flatnonzero(hit >= w - 1):
+        k = hit[i]
+        seg = vals[k - w + 1:k + 1]
+        fill_h[i] = seg.max(); fill_l[i] = seg.min()
+    return (np.where(np.isnan(hh) & ~np.isnan(fill_h), fill_h, hh),
+            np.where(np.isnan(ll) & ~np.isnan(fill_l), fill_l, ll))
+
+
+# 恐慌抄底"无法判定"事件: 每次 compute_signals 调用清空, 元素 (tf, label, 缺什么)。
+# 实盘 runner 只取当天(t == n_days-1)的事件, 据此在推送正文里告警。
+CRASH_DIAG = []
+
+
+def _make_crash_eval(cfg, calc_threshold, diag):
+    """恐慌抄底判定的**三态**求值器 (2026-10-15 事故防复发)。
+
+    旧写法 `mom < th and px < ma` 在任一项为 NaN 时整体为 False, 与"条件不成立"
+    完全无法区分 → 脏数据导致的失效看起来就是一次普通 HOLD, 异常/warning/FP flag
+    全都不响 (NaN 比较在 IEEE 754 下合法且静默)。这里把三态显式化:
+    返回 True=触发 / False=不触发 / None=**无法判定**(缺数据, 已记入 diag)。
+    引擎对 None 的行为与旧版一致(不触发, 保证基线逐分不变), 但调用方可据此告警。
+    """
+    _hl_on = float(getattr(cfg, "crash_hl_win", 0) or 0) > 0
+
+    def _eval(mom10, ma200, px, tf, label, hl=None):
+        if tf >= len(mom10) or tf >= len(px) or tf >= len(ma200):
+            diag.append((tf, label, "索引越界"))
+            return None
+        mv, pv, av = mom10[tf], px[tf], ma200[tf]
+        if not (np.isnan(mv) or np.isnan(pv) or np.isnan(av)):
+            th = calc_threshold(mom10, tf, cfg.crash_sigma)
+            if th is None:
+                return None                      # 阈值样本<60: 预热期, 非异常
+            if not (mv < th and pv < av):
+                return False
+            # ── N-30 高低点结构门 (闸门只在"动量+年线"已成立后才判定, 不改变原语义) ──
+            if hl is None or not _hl_on:
+                return True
+            hh_a, ll_a = hl
+            hh, ll = hh_a[tf], ll_a[tf]
+            if np.isnan(hh) or np.isnan(ll):
+                diag.append((tf, label, "缺%d日高低点" % int(cfg.crash_hl_win)))
+                return None
+            if getattr(cfg, "crash_dd_min", 0.0) > 0:
+                dd = (pv / hh - 1) * 100 if hh > 0 else 0.0
+                if dd > -abs(cfg.crash_dd_min):
+                    return False                 # 回撤不够深
+            if getattr(cfg, "crash_pos_max", 1.0) < 1.0:
+                pos = (pv - ll) / (hh - ll) if hh > ll else 1.0
+                if pos > cfg.crash_pos_max:
+                    return False                 # 不在区间下沿
+            if getattr(cfg, "crash_off_low_max", 0.0) > 0:
+                off = (pv / ll - 1) * 100 if ll > 0 else 0.0
+                if off > abs(cfg.crash_off_low_max):
+                    return False                 # 离最低点太远
+            return True
+        # ── 含 NaN: 只在"本该有数据却缺"时记为异常 ──
+        # 预热期(有效价不足 200 / 不足 10 日)属正常, 不记, 免得淹没有效告警
+        missing = []
+        valid_px = int(np.count_nonzero(~np.isnan(px[:tf + 1])))
+        if np.isnan(pv):
+            missing.append("指数价")
+        if np.isnan(mv) and tf >= 10:
+            missing.append("指数10日动量")
+        if np.isnan(av) and valid_px >= 200:
+            missing.append("MA200(近200日窗口内有空洞)")
+        if missing:
+            diag.append((tf, label, "缺" + "/".join(missing)))
+        return None
+    return _eval
 
 
 @dataclass
@@ -18,6 +154,10 @@ class SignalConfig:
     entry_mom_cap: float = 0.0    # 入场动量耗尽门: 空仓入场时候选20日动量>X%视为耗尽不买 (0=关闭; 恐慌抄底豁免)
     entry_decel_on: bool = False  # 入场减速门: mom10<mom20 视为动量减速, 空仓不买 (恐慌抄底豁免)
     entry_bias_cap: float = 0.0   # 入场乖离门: 候选现价高于20日均线X%视为超买不买 (0=关闭; 恐慌抄底豁免)
+    nz_vol_gate: float = 0.0      # 纳指放量门: 513100 量比(VOL20/VOL120)>X 时禁止【新买】纳指 (0=关闭; 只拦入场, 不强制卖出)
+    nz_vol_win: int = 20          # 量比分子窗口 (交易日)
+    nz_vol_base: int = 120        # 量比分母窗口 (交易日)
+    trail_stop: float = 0.0       # 移动止损(吊灯): 现价较【本次入场以来最高收盘】回撤≥X% 即离场 (0=关闭; 清到空仓)
     vol_scale_target: float = 0.0 # 波动率缩放仓位: 仓位=min(1, 目标年化波动/持仓年化已实现波动), 只降不升 (0=关闭; 恐慌抄底锁仓期豁免)
     trend_ma: int = 0             # 资产级长均线趋势门: 候选价须高于自身MA(N)才买入 (0=关闭)
     trend_ma_exempt: bool = False # 趋势门豁免纳指/黄金 (长期趋势资产不误杀)
@@ -49,6 +189,28 @@ class SignalConfig:
     crash_sigma: float = -2.5      # 恐慌抄底 σ
     crash_enabled: bool = True     # 恐慌抄底开关
     crash_lock: int = 7            # 抄底锁仓天数 (与 web UI / bt_runner 默认一致)
+    # ── N-30 高低点结构门 (2026-10-30, 用户提议; 默认全关 = 生产基线逐分不变) ──
+    crash_hl_win: int = 0          # 高低点窗口(交易日): 60≈3个月 / 120≈6个月; 0=关闭结构门
+    crash_pos_max: float = 1.0     # 位置门: 触发指数收盘价在[窗口低点,窗口高点]分位 ≤ 此值才抄底 (1.0=不限)
+    crash_dd_min: float = 0.0      # 深度门: 距窗口高点回撤 ≥ 此值(%) 才抄底 (0=不限)
+    crash_off_low_max: float = 0.0 # 离底门: 距窗口低点涨幅 ≤ 此值(%) 才抄底 (0=不限)
+    # ── B4 抄底再入场闸门 (N-31, 默认关): 审计清单最高优先级未完成项 ──
+    crash_reentry_gate: bool = False  # 抄底仓被止损后, 须等恐慌条件解除(crash_now 转 False)才准再抄底
+    # ── N-32 N 日高低点结构离场 (默认全关 = 生产基线逐分不变) ──
+    exit_hl_win: int = 0           # 结构离场窗口(交易日): 60≈3个月 / 120≈6个月; 0=关闭
+    exit_dd_high: float = 0.0      # 回撤离场: 现价距 N 日最高点回撤 ≥ 此值(%) 即离场 (0=关)
+    exit_break_low: bool = False   # 破底离场: 现价跌破前 N 日最低点(不含当日) 即离场
+    exit_hi_prox: float = 0.0      # 高抛离场: 现价距 N 日最高点 ≤ 此值(%) 即卖出 (0=关; "卖在区间上沿")
+    # ── 震荡期收紧止盈 (N-33, 默认关): 趋势走坏时用更紧的 σ 止盈, 趋势正常仍用 accel_sigma ──
+    accel_sigma_tight: float = 0.0  # 震荡 regime 下使用的止盈 σ (如 1.0/2.0); 0=关闭 (不改变 accel_sigma)
+    accel_dd_win: int = 60          # regime 判定窗口(交易日): 30 / 60
+    accel_dd_trig: float = 10.0     # 现价距窗口高点回撤 ≥ 此值(%) → 视为震荡/破位, 切紧 σ
+    # N-34: "震荡"的替代定义 (空=沿用 dd; width=区间压缩; mom=动量贴零; momstd=动量横盘度)
+    accel_regime: str = ""          # ""=dd(距高点回撤) / width / mom / momstd
+    accel_regime_th: float = 0.0    # 阈值 (width/mom 为 %, momstd 为 %)
+    # N-37: 震荡期取消 ">3%即买" 快速通道 (止盈后当天被原价买回 = 重置成本价, 2024-10 实证)
+    chop_block_fast_buy: bool = False   # True=震荡 regime 下禁止候选走 ">3%即买", 必须走 confirm_days 确认
+    chop_block_rebuy_days: int = 0      # >0=某标的刚被加速止盈后 N 天内, 震荡 regime 下禁止其 ">3%即买"
     method: str = "sigma"          # sigma / percentile / ewma_z
     method_pct: float = 2.0        # percentile: 使用P值 (仅method=percentile)
     method_halflife: int = 252     # ewma_z: 半衰期 (仅method=ewma_z)
@@ -138,9 +300,11 @@ def ols_momentum(arr: np.ndarray, w: int) -> np.ndarray:
 
 
 # ── 派生矩阵 (可在全量历史上预计算后切片传入, 消除回测窗口起点的冷启动空白) ──
-def calc_accel_thresholds(mom10_mat: np.ndarray, cfg: "SignalConfig") -> np.ndarray:
+def calc_accel_thresholds(mom10_mat: np.ndarray, cfg: "SignalConfig",
+                          sigma: float = None) -> np.ndarray:
     """加速止盈阈值矩阵。expanding 逐日计算, shift(1) 保证 t 日阈值只用 t-1 及之前的数据
     (与恐慌阈值 calc_threshold 的 arr[:t] 口径一致, 修复原全样本计算的前视偏差)"""
+    _sig = cfg.accel_sigma if sigma is None else float(sigma)
     accel_th_mat = np.full(mom10_mat.shape, np.nan)
     for i in range(mom10_mat.shape[0]):
         s = pd.Series(mom10_mat[i])
@@ -148,10 +312,10 @@ def calc_accel_thresholds(mom10_mat: np.ndarray, cfg: "SignalConfig") -> np.ndar
             th = s.expanding(min_periods=60).quantile((100 - cfg.method_pct) / 100.0)
         elif cfg.method == "ewma_z":
             e = s.ewm(halflife=cfg.method_halflife, min_periods=60)
-            th = e.mean() + cfg.accel_sigma * np.sqrt(e.var())
+            th = e.mean() + _sig * np.sqrt(e.var())
         else:
             ex = s.expanding(min_periods=60)
-            th = ex.mean() + cfg.accel_sigma * ex.std()
+            th = ex.mean() + _sig * ex.std()
         accel_th_mat[i] = th.shift(1).values
     return accel_th_mat
 
@@ -343,6 +507,10 @@ def _compute_signals_topk(
     不支持防御切换/豁免/多周期/风险调整/FIP (均实测负优化, 不与 Top-K 组合)。
     返回与 Top-1 相同的 (actions, nav, nav_log)。
     """
+    if getattr(cfg, "crash_reentry_gate", False):
+        # 显式告警而非静默分叉 (2026-09 副本分叉事故的教训): 该闸门只在 Top-1 引擎实现
+        warnings.warn("crash_reentry_gate (B4) 仅实现于 Top-1 引擎; top_k>1 时不生效",
+                      RuntimeWarning)
     n_etfs = len(etf_names)
     K = min(cfg.top_k, n_etfs)
 
@@ -386,14 +554,22 @@ def _compute_signals_topk(
         else:
             return valid.mean() + sigma_val * valid.std()
 
+    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG)
+
     sw_ = 10
     _nf = len(cyb_idx_p)
     mom10_cyb = np.full(_nf, np.nan)
     mom10_sh_idx = np.full(_nf, np.nan)
     mom10_cyb[sw_:] = (cyb_idx_p[sw_:] / cyb_idx_p[:-sw_] - 1) * 100
     mom10_sh_idx[sw_:] = (sh_idx_p[sw_:] / sh_idx_p[:-sw_] - 1) * 100
-    ma200_cyb = pd.Series(cyb_idx_p).rolling(200).mean().values if ma200_cyb is None else ma200_cyb
-    ma200_sh = pd.Series(sh_idx_p).rolling(200).mean().values if ma200_sh is None else ma200_sh
+    ma200_cyb = _ma_safe(cyb_idx_p, 200, ma200_cyb, "创业板指")
+    ma200_sh = _ma_safe(sh_idx_p, 200, ma200_sh, "上证指数")
+
+    # ── N-30 高低点结构门: 窗口 HH/LL (含当日收盘, 与 mom10/MA200 同口径, 无前视) ──
+    _hl_cyb = _hl_sh = None
+    if int(getattr(cfg, "crash_hl_win", 0) or 0) > 0:
+        _hl_cyb = _roll_hilo(cyb_idx_p, int(cfg.crash_hl_win))
+        _hl_sh = _roll_hilo(sh_idx_p, int(cfg.crash_hl_win))
 
     # ── 有效起点 (与 Top-1 一致) ──
     vs = 0
@@ -458,13 +634,11 @@ def _compute_signals_topk(
         # 用完整历史索引 tf = t + pre_days 计算阈值/MA200, 短回测区间不再被静默禁用
         crash_now = False
         tf = t + pre_days
-        th_sh = calc_threshold(mom10_sh_idx, tf, cfg.crash_sigma)
-        if th_sh is not None and mom10_sh_idx[tf] < th_sh and sh_idx_p[tf] < ma200_sh[tf]:
+        # 三态: None=无法判定(缺数据) → 记 CRASH_DIAG 供实盘告警, 行为同旧版(不触发)
+        if _crash_eval(mom10_sh_idx, ma200_sh, sh_idx_p, tf, "上证指数", _hl_sh):
             crash_now = True
-        if not crash_now:
-            th_cyb = calc_threshold(mom10_cyb, tf, cfg.crash_sigma)
-            if th_cyb is not None and mom10_cyb[tf] < th_cyb and cyb_idx_p[tf] < ma200_cyb[tf]:
-                crash_now = True
+        if not crash_now and _crash_eval(mom10_cyb, ma200_cyb, cyb_idx_p, tf, "创业板指", _hl_cyb):
+            crash_now = True
 
         held_idx = [i for i in range(n_etfs) if w[i] > 1e-9]
         buys = []; sells = []
@@ -581,6 +755,7 @@ def compute_signals(
     target_etf_idx: 0..n_etfs-1 or -1 for cash
     """
 
+    CRASH_DIAG.clear()
     if cfg.top_k > 1:
         return _compute_signals_topk(cfg, etf_names, price_mat, mom20_mat,
                                      mom10_mat, sh_mom, cyb_idx_p, sh_idx_p, n_days,
@@ -593,6 +768,14 @@ def compute_signals(
     accel_th_mat = (pre_mats or {}).get("accel_th")
     if accel_th_mat is None:
         accel_th_mat = calc_accel_thresholds(mom10_mat, cfg)
+
+    # 纳指放量门: 量比矩阵由调用方(bt_runner/live runner)在全量历史上算好切片传入
+    # (成交量不在 price_mat 里, 引擎自己算不出来; 缺省 = 门关闭)
+    nz_vr_mat = (pre_mats or {}).get("nz_vr")
+    if cfg.nz_vol_gate > 0 and nz_vr_mat is None:
+        # 静默失效是 2026-10-15 事故的成因, 这里必须显式告警
+        warnings.warn("nz_vol_gate>0 但未传入 pre_mats['nz_vr'](量比矩阵) → 放量门不生效; "
+                      "调用方需补 VOL20/VOL120 矩阵", RuntimeWarning)
 
     # 同样方法用于恐慌阈值计算（在循环内使用）
     def calc_threshold(arr, t, sigma_val):
@@ -607,6 +790,8 @@ def compute_signals(
         else:
             return valid.mean() + sigma_val * valid.std()
 
+    _crash_eval = _make_crash_eval(cfg, calc_threshold, CRASH_DIAG)
+
     # ── 恐慌抄底: 10日动量 for 399006 + 000001 ──
     # cyb_idx_p/sh_idx_p 为完整历史序列(含预热), 决策时用 tf = t + pre_days 访问,
     # 保证短回测区间下阈值/MA200 依然用足量历史计算
@@ -617,8 +802,14 @@ def compute_signals(
     mom10_cyb[sw:] = (cyb_idx_p[sw:] / cyb_idx_p[:-sw] - 1) * 100
     mom10_sh_idx[sw:] = (sh_idx_p[sw:] / sh_idx_p[:-sw] - 1) * 100
 
-    ma200_cyb = pd.Series(cyb_idx_p).rolling(200).mean().values if ma200_cyb is None else ma200_cyb
-    ma200_sh = pd.Series(sh_idx_p).rolling(200).mean().values if ma200_sh is None else ma200_sh
+    ma200_cyb = _ma_safe(cyb_idx_p, 200, ma200_cyb, "创业板指")
+    ma200_sh = _ma_safe(sh_idx_p, 200, ma200_sh, "上证指数")
+
+    # ── N-30 高低点结构门: 窗口 HH/LL (含当日收盘, 与 mom10/MA200 同口径, 无前视) ──
+    _hl_cyb = _hl_sh = None
+    if int(getattr(cfg, "crash_hl_win", 0) or 0) > 0:
+        _hl_cyb = _roll_hilo(cyb_idx_p, int(cfg.crash_hl_win))
+        _hl_sh = _roll_hilo(sh_idx_p, int(cfg.crash_hl_win))
 
     # ── 有效起点 ──
     # 至少2个标的有动量数据即开跑；新上市标的在数据足够后自然加入竞争，
@@ -641,6 +832,9 @@ def compute_signals(
     stop_block_until = np.full(n_etfs, -1)          # 止损冷却状态 (按标的独立计时)
     crash_alloc_now = 0.0                           # 恐慌抄底当前仓位比例 (0=无抄底叠加仓)
     crash_base_pos = -1                             # 抄底前的名义主仓 (用于组合净值计算; -1=空仓抄底)
+    # ── B4 抄底再入场闸门 (N-31, 默认关): 抄底仓被止损后, 须等恐慌条件解除才准再抄底 ──
+    pos_from_crash = False                          # 当前持仓是否由恐慌抄底建立
+    crash_wait_clear = False                        # True=已止损, 等 crash_now 转 False 才解锁
     sat_pos = -1; sat_alloc = 0.0; sat_hs = -1      # 分档切换组合: 卫星腿(-1=无), 权重与入场日
     actions = []
     nav_log = []
@@ -819,6 +1013,170 @@ def compute_signals(
             for _i in range(price_mat.shape[0]):
                 ma_gate_mat[_i] = pd.Series(price_mat[_i]).rolling(cfg.fast_lane_ma).mean().values
 
+    # ── N-32 结构离场矩阵: HH(含当日) / LL(不含当日, 否则 px<LL 恒不成立) ──
+    # 优先用调用方在全量历史上预计算并切片的矩阵 (防冷启动空白, 与 accel_th 同口径)
+    _exit_hh = (pre_mats or {}).get("exit_hh")
+    _exit_ll = (pre_mats or {}).get("exit_ll")
+    if cfg.exit_hl_win > 0 and (_exit_hh is None or _exit_ll is None):
+        _exit_hh = np.full(price_mat.shape, np.nan)
+        _exit_ll = np.full(price_mat.shape, np.nan)
+        for _i in range(price_mat.shape[0]):
+            _h, _l = _roll_hilo(price_mat[_i], int(cfg.exit_hl_win))
+            _exit_hh[_i] = _h
+            _exit_ll[_i] = np.concatenate([[np.nan], _l[:-1]])
+
+    def hl_exit(i, t):
+        """N 日高低点结构离场 (N-32): 距 N 日最高点回撤 ≥ exit_dd_high% 或 跌破前 N 日最低点。
+        与 trail_hit 的区别: 锚在【滚动窗口】结构位, 不是【本次入场以来】的最高点。"""
+        if cfg.exit_hl_win <= 0 or i < 0 or t < 0:
+            return False
+        px = price_mat[i, t]
+        if np.isnan(px):
+            return False
+        h = _exit_hh[i, t]
+        if cfg.exit_dd_high > 0 and not np.isnan(h) and h > 0:
+            if px <= h * (1 - cfg.exit_dd_high / 100.0):
+                return True
+        if cfg.exit_break_low:
+            l = _exit_ll[i, t]
+            if not np.isnan(l) and px < l:
+                return True
+        if cfg.exit_hi_prox > 0 and not np.isnan(h) and h > 0:
+            if px >= h * (1 - cfg.exit_hi_prox / 100.0):
+                return True      # 高抛: 已回到区间上沿 (卖在最强处)
+        return False
+
+    # ── N-33 震荡期收紧止盈: regime 判据用"距窗口高点回撤", 命中时改读紧 σ 阈值矩阵 ──
+    _accel_tight = (pre_mats or {}).get("accel_th_tight")
+    _accel_hh = (pre_mats or {}).get("accel_hh")
+    _regime_ind = (pre_mats or {}).get("regime_ind")
+    _need_regime = (cfg.accel_sigma_tight > 0 or cfg.chop_block_fast_buy
+                    or cfg.chop_block_rebuy_days > 0)
+    if _need_regime:
+        if _accel_tight is None and cfg.accel_sigma_tight > 0:
+            _accel_tight = calc_accel_thresholds(mom10_mat, cfg, sigma=cfg.accel_sigma_tight)
+        if _accel_hh is None:
+            _accel_hh = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _accel_hh[_i] = _roll_hilo(price_mat[_i], int(cfg.accel_dd_win))[0]
+        _mode = (cfg.accel_regime or "").strip().lower()
+        if _mode in ("width", "width_pct") and _regime_ind is None:
+            _regime_ind = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _h, _l = _roll_hilo(price_mat[_i], 20)
+                _regime_ind[_i] = (_h - _l) / price_mat[_i] * 100.0
+        if _mode in ("momstd", "momstd_pct") and _regime_ind is None:
+            _regime_ind = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _regime_ind[_i] = pd.Series(mom10_mat[_i]).rolling(20).std().values
+        if _mode.endswith("_pct") and _regime_ind is not None:
+            # 转成"自身滚动 250 日分位"(0~1): 消除量纲/标的差异, 阈值=分位
+            _regime_ind = np.array([
+                pd.Series(_regime_ind[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                for _i in range(_regime_ind.shape[0])])
+        if _mode == "combo":
+            # N-35: 多定义组合(多数表决)。四票: dd(30d≥10%) / width_pct≤20% / momstd_pct≤20% / spread≤3
+            _rw = (pre_mats or {}).get("regime_width_pct"); _rm = (pre_mats or {}).get("regime_momstd_pct")
+            if _rw is None:
+                _w0 = np.full(price_mat.shape, np.nan)
+                for _i in range(price_mat.shape[0]):
+                    _h, _l = _roll_hilo(price_mat[_i], 20)
+                    _w0[_i] = (_h - _l) / price_mat[_i] * 100.0
+                _rw = np.array([pd.Series(_w0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                                for _i in range(_w0.shape[0])])
+            if _rm is None:
+                _m0 = np.array([pd.Series(mom10_mat[_i]).rolling(20).std().values
+                                for _i in range(price_mat.shape[0])])
+                _rm = np.array([pd.Series(_m0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                                for _i in range(_m0.shape[0])])
+            _regime_combo = (_rw, _rm)
+
+    def _regime_chop(i, t):
+        """N-33/N-34 "震荡" regime 判定 (只用当日可得的自身信息):
+        dd=距窗口高点回撤≥trig% / width=区间宽度≤th% / mom=|mom20|≤th% / momstd=std(mom10,20)≤th"""
+        mode = (cfg.accel_regime or "").strip().lower()
+        if mode in ("", "dd"):
+            if _accel_hh is None:
+                return False
+            h = _accel_hh[i, t]
+            px = price_mat[i, t]
+            if np.isnan(h) or np.isnan(px) or h <= 0:
+                return False
+            return bool(px <= h * (1 - cfg.accel_dd_trig / 100.0))
+        if mode == "mom":
+            v = abs(mom20_mat[i, t])
+            return bool((not np.isnan(v)) and v <= cfg.accel_regime_th)
+        if mode == "composite":
+            # N-35: 三个"平坦度"分位的等权平均 (width/momstd/|mom20|), 越低=越像横盘
+            _rw = (pre_mats or {}).get("regime_width_pct"); _rm = (pre_mats or {}).get("regime_momstd_pct")
+            _rp = (pre_mats or {}).get("regime_mom_pct")
+            if _rw is None or _rm is None or _rp is not None:
+                if _rw is None or _rm is None:
+                    return False
+            vals = []
+            for _mat in (_rw, _rm, _rp):
+                if _mat is None:
+                    continue
+                v = _mat[i, t]
+                if not np.isnan(v):
+                    vals.append(float(v))
+            if len(vals) < 2:
+                return False
+            return bool(float(np.mean(vals)) <= cfg.accel_regime_th)
+        if mode == "combo":
+            need = int(cfg.accel_regime_th) if cfg.accel_regime_th >= 1 else 2
+            votes = []
+            h = _accel_hh[i, t] if _accel_hh is not None else np.nan
+            px = price_mat[i, t]
+            votes.append(bool((not np.isnan(h)) and (not np.isnan(px)) and h > 0
+                              and px <= h * 0.90))            # dd: 30d 高点回撤 ≥10%
+            votes.append(bool((not np.isnan(_regime_combo[0][i, t])) and _regime_combo[0][i, t] <= 0.20))
+            votes.append(bool((not np.isnan(_regime_combo[1][i, t])) and _regime_combo[1][i, t] <= 0.20))
+            _row = mom20_mat[:, t]; _row = _row[~np.isnan(_row)]
+            votes.append(bool(_row.size >= 2 and float(_row.max() - _row.min()) <= 3.0))
+            return sum(votes) >= need
+        if mode in ("spread", "weak"):
+            # 横截面定义 (N-34 补充): spread=全池动量极差小(无领跑者); weak=全池动量最强也≤阈值(普跌)
+            row = mom20_mat[:, t]
+            row = row[~np.isnan(row)]
+            if row.size < 2:
+                return False
+            v = float(row.max() - row.min()) if mode == "spread" else float(row.max())
+            return bool(v <= cfg.accel_regime_th)
+        _ind = _regime_ind
+        if _ind is None:
+            return False
+        v = _ind[i, t]
+        if np.isnan(v):
+            return False
+        return bool(v <= cfg.accel_regime_th)
+
+    def accel_line(i, t):
+        """加速止盈阈值: 震荡 regime 成立时改用 accel_sigma_tight 算出的更紧阈值,
+        否则仍用正常 accel_sigma。"""
+        th = accel_th_mat[i, t]
+        if cfg.accel_sigma_tight <= 0 or _accel_tight is None:
+            return th
+        if i < 0 or t < 0:
+            return th
+        if _regime_chop(i, t):
+            return _accel_tight[i, t]
+        return th
+
+    tp_recent = np.full(n_etfs, -10 ** 9)      # N-37: 各标的最近一次加速止盈日
+
+    def fast_buy_blocked(i, t):
+        """N-37 震荡期取消 ">3%即买": (a) 全局开关 chop_block_fast_buy;
+        (b) 该标的刚被止盈后 chop_block_rebuy_days 天内, 且仍处震荡 regime。"""
+        if i < 0:
+            return False
+        if cfg.chop_block_fast_buy and _regime_chop(i, t):
+            return True
+        if (cfg.chop_block_rebuy_days > 0 and t - tp_recent[i] <= cfg.chop_block_rebuy_days
+                and _regime_chop(i, t)):
+            return True
+        return False
+
     def stop_line(i, t):
         """止损线: stop_sigma>0 时 = -k×标的自身20日波动率(不同标的不同线);
         stop_sigma_floor=True 时固定线为下限(只放宽不收紧);
@@ -835,10 +1193,48 @@ def compute_signals(
             return min(cfg.stop_loss, s) if cfg.stop_sigma_floor else s
         return cfg.stop_loss
 
+    def nz_vol_block(i, t):
+        """纳指放量门 (2026-10-22 体检): 513100 量比 VOL20/VOL120 高于阈值时【不新买纳指】。
+
+        体检证据: 纳指ETF 量比与未来20日收益 IC -0.213 / -0.214 (2016-21 与 2021-26 两段
+        一致), 前5档单调 -0.90/-0.80; 控制溢价档与波动档后依然成立; 落到引擎逐笔:
+        高量比入场 21 笔平均 +0.99% vs 低量比 +5.30%。
+        语义: 只拦"新买纳指"(空仓入场/切入纳指), 不影响卖出、止损、加速止盈与其它标的。
+        """
+        if cfg.nz_vol_gate <= 0 or nz_vr_mat is None:
+            return False
+        if etf_names[i] != "纳指":
+            return False
+        if t < 0 or t >= nz_vr_mat.shape[1]:
+            return False
+        v = nz_vr_mat[i, t]
+        return (not np.isnan(v)) and v > cfg.nz_vol_gate
+
+    def trail_hit(i, t):
+        """移动止损(吊灯): 现价相对【本次入场以来最高收盘】回撤 ≥ trail_stop% 即触发。
+
+        主流趋势跟踪的标准退出方式 (Chandelier Exit 的百分比简化版)。
+        只做"利润保护", 与固定止损 -5% 并存; 触发后与止损同路: 有更优候选就切, 否则清空仓。
+        """
+        if cfg.trail_stop <= 0 or i < 0 or hs < 0 or t <= hs:
+            return False
+        px = price_mat[i, t]
+        if np.isnan(px):
+            return False
+        w = price_mat[i, hs:t + 1]
+        w = w[~np.isnan(w)]
+        if len(w) < 2:
+            return False
+        peak = float(np.max(w))
+        return peak > 0 and px <= peak * (1 - cfg.trail_stop / 100.0)
+
     def entry_blocked(i, t):
         """入场动量耗尽门 (空仓入场用, 恐慌抄底/切换买入豁免):
         entry_mom_cap: 候选20日动量>X% 视为耗尽; entry_decel_on: mom10<mom20 视为减速;
-        entry_bias_cap: 候选现价高于20日均线X% 视为超买"""
+        entry_bias_cap: 候选现价高于20日均线X% 视为超买;
+        nz_vol_gate: 纳指放量时不许新买"""
+        if nz_vol_block(i, t):
+            return True
         if not np.isnan(ms[i]):
             if cfg.entry_mom_cap > 0 and ms[i] > cfg.entry_mom_cap:
                 return True
@@ -1045,18 +1441,21 @@ def compute_signals(
         # 用完整历史索引 tf = t + pre_days 计算阈值/MA200, 短回测区间不再被静默禁用
         crash_now = False
         tf = t + pre_days
-        th_sh = calc_threshold(mom10_sh_idx, tf, cfg.crash_sigma)
-        if th_sh is not None and mom10_sh_idx[tf] < th_sh and sh_idx_p[tf] < ma200_sh[tf]:
+        # 三态: None=无法判定(缺数据) → 记 CRASH_DIAG 供实盘告警, 行为同旧版(不触发)
+        if _crash_eval(mom10_sh_idx, ma200_sh, sh_idx_p, tf, "上证指数", _hl_sh):
             crash_now = True
-        if not crash_now:
-            th_cyb = calc_threshold(mom10_cyb, tf, cfg.crash_sigma)
-            if th_cyb is not None and mom10_cyb[tf] < th_cyb and cyb_idx_p[tf] < ma200_cyb[tf]:
-                crash_now = True
+        if not crash_now and _crash_eval(mom10_cyb, ma200_cyb, cyb_idx_p, tf, "创业板指", _hl_cyb):
+            crash_now = True
+
+        # ── B4 再入场闸门: 恐慌条件解除(出现不恐慌的一天)才解锁二次抄底 ──
+        if crash_wait_clear and not crash_now:
+            crash_wait_clear = False
+        _crash_blocked = bool(getattr(cfg, "crash_reentry_gate", False) and crash_wait_clear)
 
         cyb_pool_idx = (etf_names.index(cfg.crash_target_name)
                         if cfg.crash_target_name in etf_names else -1)
         if (cfg.crash_enabled and crash_now and t >= crash_held_until
-                and cyb_pool_idx >= 0):
+                and cyb_pool_idx >= 0 and not _crash_blocked):
             if sat_pos >= 0:
                 # 分档组合被恐慌抄底接管: 先清组合双腿, 再走标准抄底入场
                 nav *= (1 - cfg.commission - cfg.slippage)
@@ -1076,14 +1475,21 @@ def compute_signals(
                 pos = cyb_pool_idx
                 hs = t; hn = nav
                 streak = 0
+                pos_from_crash = True          # B4: 标记本仓来自抄底
                 actions.append((t, crash_base_pos, cyb_pool_idx, "恐慌抄底"))
             # 已持创业: 仅刷新锁仓期, 不重复交易
         elif t < crash_held_until:
             # ── 抄底锁仓期: 只允许止损保护退出, 其他动作(轮动/空仓/止盈/动量门)全部锁住 ──
             # 符合"抄底=认准反弹拿住"的设计: 期间不被动量波动切走, 也不被上证空仓误伤
-            if pos >= 0 and pnl <= stop_line(pos, t):
+            if pos >= 0 and (pnl <= stop_line(pos, t) or trail_hit(pos, t) or hl_exit(pos, t)):
                 np_pos = ti if (ti != pos and not ti_blocked) else -1   # 有更强候选切过去, 否则清仓
-                sw = True; streak = 0; reason = "止损"
+                if pnl <= stop_line(pos, t):
+                    _why = "止损"
+                elif trail_hit(pos, t):
+                    _why = "移动止损"
+                else:
+                    _why = "结构离场"
+                sw = True; streak = 0; reason = _why
         elif sc:
             if cfg.sh_cash_exempt and pos >= 0 and etf_names[pos] in SH_CASH_EXEMPT_NAMES:
                 pass  # 持有豁免标的(纳指/黄金), 上证空仓不出场
@@ -1099,7 +1505,8 @@ def compute_signals(
                         ei = max(ex_idx, key=lambda i: ms[i])
                         lm = ms[ei]
                         if (not np.isnan(lm) and not entry_blocked(ei, t) and trend_ok(ei, t)
-                                and (lm >= cfg.cash_skip_gt or streak >= cfg.confirm_days)):
+                                and ((lm >= cfg.cash_skip_gt and not fast_buy_blocked(ei, t))
+                                     or streak >= cfg.confirm_days)):
                             sw = True; np_pos = ei; streak = 0
                             reason = ">3%即买(豁免)" if lm >= cfg.cash_skip_gt else "确认买入(豁免)"
                             bought = True
@@ -1137,12 +1544,11 @@ def compute_signals(
             hd_sat = t - sat_hs
             pb = _leg_pnl(base, entry_base, t)
             ps = _leg_pnl(sat, entry_sat, t)
-            accel_b = (cfg.accel_enabled
-                       and not np.isnan(accel_th_mat[base, t])
-                       and mom10_mat[base, t] > accel_th_mat[base, t])
-            accel_s = (cfg.accel_enabled
-                       and not np.isnan(accel_th_mat[sat, t])
-                       and mom10_mat[sat, t] > accel_th_mat[sat, t])
+            _ab = accel_line(base, t); _as_ = accel_line(sat, t)
+            accel_b = (cfg.accel_enabled and not np.isnan(_ab)
+                       and mom10_mat[base, t] > _ab)
+            accel_s = (cfg.accel_enabled and not np.isnan(_as_)
+                       and mom10_mat[sat, t] > _as_)
             stop_b = t >= crash_held_until and pb <= stop_line(base, t)
             stop_s = t >= crash_held_until and ps <= stop_line(sat, t)
 
@@ -1226,7 +1632,8 @@ def compute_signals(
                     pass  # VIX/SKEW/美债利率冲击门: 美股恐慌期不新买纳指
                 elif _share_block(ti, t):
                     pass  # 份额风险门: 宽基篮子净赎回期不新买A股标的
-                elif lm >= cfg.cash_skip_gt and not np.isnan(lm):
+                elif (lm >= cfg.cash_skip_gt and not np.isnan(lm)
+                        and not fast_buy_blocked(ti, t)):
                     sw = True; np_pos = ti; streak = 0; reason = ">3%即买"
                 elif streak >= cfg.confirm_days:
                     sw = True; np_pos = ti; streak = 0; reason = "确认买入"
@@ -1236,6 +1643,9 @@ def compute_signals(
             # 这意味着实际亏损可能显著超过 stop_loss 线 (如 2026-06 纳指 -9.79%)。
             # 止损卖出后该标的进入 stop_cooldown 冷却, N天内不会被买回。
             gap = ms[ti] - ms[pos]; met = (streak >= cfg.confirm_days)
+            # 纳指放量门: 今日不许【切进】纳指。止损/急跌仍可执行, 但落空仓而不是接纳指。
+            _nz_gated = nz_vol_block(ti, t)
+            _gated_pos = -1 if _nz_gated else ti
             # 快速通道门槛: 下限=max(固定3%, k×滚动gapσ), 上限=exception_gap_max
             # (大gap=被卖者超跌/挑战者超涨, 过度延伸易反转 → 不走快速通道改走慢通道)
             fast_gap = gap >= cfg.exception_gap
@@ -1252,9 +1662,17 @@ def compute_signals(
                     fast_gap = False
             if (cfg.panic_drop > 0 or cfg.panic_vol_on) and _panic_hit(pos, t):
                 # 单日急跌 (固定阈值 或 波动缩放阈值, N-7): 切向当前更优候选
-                sw = True; np_pos = ti; streak = 0; reason = "单日急跌"
-            if not sw and pnl <= stop_line(pos, t):
-                sw = True; np_pos = ti; streak = 0; reason = "止损"
+                sw = True; np_pos = _gated_pos; streak = 0; reason = "单日急跌"
+            if not sw and (pnl <= stop_line(pos, t) or trail_hit(pos, t) or hl_exit(pos, t)):
+                sw = True; np_pos = _gated_pos; streak = 0
+                if pnl <= stop_line(pos, t):
+                    reason = "止损"
+                elif trail_hit(pos, t):
+                    reason = "移动止损"
+                else:
+                    reason = "结构离场"
+            elif _nz_gated:
+                pass  # 纳指放量门: 今日不主动切进纳指 (止损/急跌出口已在上面按 _gated_pos 处理)
             elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:
                 pass  # 排名缓冲: 持仓仍在前N名, 不切换
             elif not trend_ok(ti, t):
@@ -1279,6 +1697,14 @@ def compute_signals(
                     sw = True; np_pos = ti; streak = 0; reason = ">3%切换"
             elif hd >= cfg.min_hold and gap >= cfg.min_gap and met:
                 sw = True; np_pos = ti; streak = 0; reason = "正常切换"
+        elif (cfg.trail_stop > 0 and pos >= 0 and t >= crash_held_until
+                and trail_hit(pos, t)):
+            # 移动止损补盲区: 持仓仍是动量第一(无处可切)时, 也从高点回撤线清到空仓
+            sw = True; np_pos = -1; streak = 0; reason = "移动止损"
+        elif (cfg.exit_hl_win > 0 and pos >= 0 and t >= crash_held_until
+                and hl_exit(pos, t)):
+            # N-32 结构离场补盲区: 持仓仍是动量第一(无处可切)时, 距N日高点回撤/破前低 → 清到空仓
+            sw = True; np_pos = -1; streak = 0; reason = "结构离场"
         elif (cfg.abs_stop_loss and pos >= 0 and pnl <= stop_line(pos, t)
                 and t >= crash_held_until):
             # 绝对止损: 持仓仍是动量第一(ti==pos)时的盲区补丁——
@@ -1290,8 +1716,8 @@ def compute_signals(
                 sw = True; np_pos = -1; streak = 0; reason = "单日急跌"
         elif (cfg.accel_enabled and pos >= 0
                 and etf_names[pos] not in {x.strip() for x in cfg.accel_exempt_names.split(",") if x.strip()}
-                and not np.isnan(accel_th_mat[pos, t])
-                and mom10_mat[pos, t] > accel_th_mat[pos, t]):
+                and not np.isnan(accel_line(pos, t))
+                and mom10_mat[pos, t] > accel_line(pos, t)):
             sw = True; np_pos = -1; streak = 0; reason = "加速止盈"
             accel_exit = True
 
@@ -1317,10 +1743,17 @@ def compute_signals(
             elif cfg.cash_park_code: nav *= (1 - cost) # 空仓停泊: 卖出停泊标的计费
             if np_pos >= 0: nav *= (1 - cost); hs = t; hn = nav
             old_pos = pos; pos = np_pos
+            # ── B4: 抄底仓被止损 → 上锁, 直到恐慌条件解除(crash_now 转 False)才准再抄底 ──
+            if (getattr(cfg, "crash_reentry_gate", False) and pos_from_crash
+                    and old_pos >= 0 and reason in ("止损", "绝对止损", "移动止损")):
+                crash_wait_clear = True
+            pos_from_crash = False
             if (accel_exit and old_pos >= 0 and cfg.accel_cooldown > 0
                     and (not cfg.accel_cooldown_gold_only or etf_names[old_pos] == "黄金")):
                 accel_block_idx = old_pos
                 accel_block_until = t + cfg.accel_cooldown
+            if accel_exit and old_pos >= 0:
+                tp_recent[old_pos] = t          # N-37: 记录止盈日, 供震荡期禁止快买用
             if accel_exit and old_pos >= 0 and cfg.accel_reentry_gate:
                 accel_gate[old_pos] = True
             if (reason in ("止损", "绝对止损") and old_pos >= 0

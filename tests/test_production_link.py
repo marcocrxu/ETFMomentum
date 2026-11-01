@@ -50,6 +50,45 @@ def test_runner_matches_backtest_prep():
     assert "[:, pre_days:]" in src, "决策区矩阵必须切片"
 
 
+def test_reconcile_replay_window_matches_production():
+    """对账回放的窗口必须与实盘/基线同源 — 2026-10-12 事故:
+    '今天-120天' 的短窗口把 expanding σ 样本从 2686 缩到 274 天, 恐慌抄底触发线
+    从 -8.35% 抬到 -5.88% → 09-28 假触发抄底创业, 连报 3 天假"口径分歧"。"""
+    from live.runner import LiveRunner
+    from live import reconcile
+
+    assert reconcile.REPLAY_START == LiveRunner.DECISION_START, \
+        "对账回放起点偏离实盘决策区起点 — 阈值会再次漂移"
+
+    # 事故窗口 (120 天 ≈ 274 个交易日) 必须被抓出来, 正常窗口放行
+    assert reconcile.replay_window_problem(274, "2026-06-15") is not None
+    assert reconcile.replay_window_problem(2500, LiveRunner.DECISION_START) is None
+
+    src = open(os.path.join(ETF_DIR, "live", "reconcile.py"), encoding="utf-8").read()
+    assert "days=120" not in src, "禁止再出现'今天-120天'式短窗口"
+
+
+def test_reconcile_flags_short_window(monkeypatch):
+    """窗口体检必须挂在对账主流程上: 短窗口 → 报"窗口过短", 且不拿错口径仓位做对比"""
+    import web.bt_runner as bt
+    from live import notify, reconcile
+
+    calls = {}
+    monkeypatch.setattr(bt, "run_backtest",
+                        lambda p: {"last_position": "创业",
+                                   "dates": ["2026-06-15"] * 274})
+    monkeypatch.setattr(notify, "archive",
+                        lambda kind, msg, extra=None: calls.update(msg=msg, extra=extra))
+    monkeypatch.setattr(notify, "send_dingtalk", lambda m: None)
+    monkeypatch.setattr(reconcile, "REPLAY_START", "2026-06-15")
+
+    assert reconcile.run_reconcile(push=False) is False
+    problems = calls["extra"]["problems"]
+    assert any("回放窗口过短" in p for p in problems), problems
+    assert not any("口径分歧" in p for p in problems), \
+        "短窗口回放的仓位是假信号, 不得用于口径对比: %s" % problems
+
+
 def test_cron_script_is_thin_wrapper():
     """旧 cron 脚本必须只是转发入口, 不得再含策略判断"""
     src = open(os.path.join(STOCK_BOT, "cron_etf_momentum.py"), encoding="utf-8").read()
@@ -107,3 +146,99 @@ def test_suggestion_anchors_actual_position():
     # 策略持仓 + 实际空仓 → 提示买入对齐
     assert suggestion_for({"signal": "HOLD", "sim_position": "黄金", "sim_entry_date": "2026-08-11"},
                           {"position": None}) == ("买入 黄金（对齐策略仓位）", "switch")
+    # 实际持仓 ≠ 策略持仓 (漏跟信号) → 明确切换, 不得落回"继续空仓观望"
+    # (2026-10-15: 用户实际纳指 / 策略创业, 旧逻辑给出"继续空仓观望")
+    assert suggestion_for({"signal": "HOLD", "sim_position": "创业", "sim_entry_date": "2026-10-14"},
+                          {"position": "纳指"}) == ("卖出 纳指，买入 创业（对齐策略仓位）", "switch")
+
+
+def test_stop_line_anchored_to_actual_cost():
+    """止损线必须按【用户实际成本】算, 不得把策略模拟仓的止损价印在实际持仓行上
+
+    2026-10-21 事故: 引擎按其模拟入场 2.891(10-14 恐慌抄底) 触发 -5% 止损,
+    用户实际成本 2.786 当时只有 -2.62%; 推送却把纳指的止损线 2.195 印在创业持仓
+    那一行, 用户据此以为"策略判我亏了 5%" (2026-10-22 用户质疑)。"""
+    from live.daily_run import build_message
+
+    res = {
+        "date": "2026-10-22", "signal": "HOLD", "target": None, "reason": "",
+        "momentums": {"纳指": 2.23, "黄金": -6.18, "创业": -21.29},
+        "sh_momentum": -5.76, "sim_position": "纳指", "prev_position": "纳指",
+        "stop_price": 2.1954, "nz_mix_active": True,
+        "nz_note": "0.7×QQQ-CNY(+2.21%) + 0.3×513100",
+        "live_prices": {"纳指": 2.267, "创业": 2.617, "黄金": 8.358},
+    }
+    # 实际持创业(成本 2.786) / 策略模拟仓纳指 → 两个止损线都要标清楚
+    msg = build_message(res, {"position": "创业", "entry_date": "2026-10-15",
+                              "entry_price": 2.786})
+    assert "实盘止损线(按你的成本) ¥2.647" in msg, msg        # 2.786 × 0.95
+    assert "策略模拟仓[纳指]止损线 ¥2.195" in msg, msg
+    assert "卖出 创业，买入 纳指（对齐策略仓位）" in msg, msg
+
+    # 实盘=模拟仓时只显示引擎止损线, 不引入第二套口径
+    msg2 = build_message(res, {"position": "纳指", "entry_date": "2026-10-21",
+                               "entry_price": 2.312})
+    assert "引擎止损线 ¥2.195" in msg2, msg2
+    assert "实盘止损线" not in msg2, msg2
+
+
+def test_data_integrity_flags_bad_and_missing_days():
+    """数据体检: 非交易日脏行 / 缺失交易日都必须报出来 (2026-10-15 事故)
+
+    事故链: 000001.SH 一条周六行 → 对齐日历多一天 → 其余标的该日全 NaN →
+    创业板指 MA200 全 NaN → 恐慌抄底被静默否决; 且 14:50 推送与 21:30 收盘回放
+    读同一份脏缓存, 一致地错。体检必须进推送正文, 不能再只写日志。"""
+    import pandas as pd
+    from live.daily_run import data_integrity_problems
+
+    open_days = set(pd.date_range("2026-09-01", "2026-10-15", freq="B"))
+
+    clean = pd.DataFrame({"trade_date": sorted(open_days)})
+    assert data_integrity_problems({"513100.SH": clean}, open_days) == []
+
+    dirty = pd.DataFrame({"trade_date": sorted(open_days | {pd.Timestamp("2026-09-12")})})
+    probs = data_integrity_problems({"000001.SH": dirty}, open_days)
+    assert probs == ["000001.SH 含 1 个非交易日行: 2026-09-12"], probs
+
+    missing = pd.DataFrame({"trade_date": sorted(open_days - {pd.Timestamp("2026-09-10")})})
+    probs = data_integrity_problems({"159915.SZ": missing}, open_days)
+    assert probs == ["159915.SZ 缺 1 个交易日: 2026-09-10"], probs
+
+
+def test_crash_unknown_is_three_state_and_surfaced():
+    """恐慌抄底三态: 缺数据必须报"无法判定", 不能与"未触发"混为一谈
+
+    旧写法 `mom < th and px < ma` 遇 NaN 恒为 False, 无异常无 warning
+    (IEEE 754: NaN 比较合法且静默), 于是脏数据失效看起来就是一次普通 HOLD。"""
+    import numpy as np
+    from conftest import build_inputs, gbm_prices
+    from strategy.signal import SignalConfig, compute_signals, CRASH_DIAG
+
+    n = 400
+    prices = {"纳指": gbm_prices(n, 100, 0.0008, 0.008, seed=1),
+              "黄金": gbm_prices(n, 100, 0.0004, 0.006, seed=2),
+              "创业": gbm_prices(n, 100, 0.0006, 0.014, seed=3)}
+    cyb = gbm_prices(n, 3000, 0.0003, 0.010, seed=4)
+
+    # 干净数据: 无"无法判定"事件 (预热期 MA200 未就绪不算异常)
+    inp = build_inputs(prices, {"cyb": cyb, "sh": gbm_prices(n, 3000, 0.0002, 0.008, seed=5)})
+    compute_signals(SignalConfig(), **inp)
+    assert CRASH_DIAG == [], f"干净数据不应报异常: {CRASH_DIAG[:3]}"
+
+    # 指数序列尾部有数据空洞 → 必须记为"无法判定"
+    holed = cyb.copy(); holed[390] = np.nan
+    inp = build_inputs(prices, {"cyb": holed, "sh": gbm_prices(n, 3000, 0.0002, 0.008, seed=5)})
+    compute_signals(SignalConfig(), **inp)
+    labels = {e[1] for e in CRASH_DIAG}
+    assert "创业板指" in labels, f"应报创业板指无法判定: {CRASH_DIAG}"
+    assert any("动量" in e[2] or "指数价" in e[2] for e in CRASH_DIAG), CRASH_DIAG
+
+    # 推送正文必须把"无法判定"写出来
+    from live.daily_run import build_message
+    msg = build_message({"date": "2026-10-15", "signal": "HOLD", "target": None,
+                         "reason": "", "momentums": {"纳指": 1.0}, "sh_momentum": 0.0,
+                         "sim_position": "创业", "prev_position": "创业",
+                         "live_prices": {}, "nz_mix_active": True, "nz_note": "x",
+                         "crash_unknown": ["创业板指 缺MA200(近200日窗口内有空洞)"]},
+                        {"position": "纳指"})
+    assert "恐慌抄底今日无法判定" in msg and "不等于未触发" in msg, msg

@@ -63,6 +63,18 @@ def api_live_today():
     from web.live_page import get_live_data
     return jsonify(get_live_data())
 
+@app.route("/earn")
+def earn():
+    """赚钱效应页: 昨日买入的人今天赚没赚钱 (纯展示, 数据 web/earn_page.py)"""
+    return render_template("earn.html")
+
+
+@app.route("/api/earn/effect")
+def api_earn_effect():
+    from web.earn_page import get_data
+    return jsonify(get_data())
+
+
 @app.route("/analysis")
 def analysis():
     return render_template("analysis.html")

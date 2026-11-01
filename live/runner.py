@@ -153,6 +153,12 @@ class LiveRunner:
         # 只有发生在今日(最后一行)的 action 才是今天的信号
         # (此前直接取 actions[-1], 会把几天前的历史操作当成今日信号推送)
         last_action = actions[-1] if actions else None
+
+        # ── 恐慌抄底"无法判定"告警 (2026-10-15): 缺数据时该信号会被静默吞掉,
+        #    与"真的没触发"长得一样; 只取今日(tf = 全量末行)的事件上报 ──
+        from strategy.signal import CRASH_DIAG
+        crash_unknown = ["%s %s" % (lab, why) for (tf, lab, why) in CRASH_DIAG
+                         if tf == n_full - 1]
         signal = "HOLD"
         target = None
         reason = ""
@@ -178,6 +184,9 @@ class LiveRunner:
         sim_position = etf_names[sim_pos] if sim_pos >= 0 else ""
         prev_position = etf_names[prev_pos] if prev_pos >= 0 else ""
         sim_entry_date = str(all_dates[sim_entry_idx])[:10] if sim_entry_idx >= 0 else ""
+        # 引擎的止损价 (stop_sigma=0 时即固定线 sim_entry × (1+stop_loss%)); 自适应止损下不显示
+        stop_price = (round(sim_entry_price * (1 + self.cfg.stop_loss / 100.0), 4)
+                      if sim_entry_price > 0 and self.cfg.stop_sigma <= 0 else None)
         recent_actions = [
             {"date": str(all_dates[t])[:10],
              "old": etf_names[o] if o >= 0 else "空仓",
@@ -215,9 +224,11 @@ class LiveRunner:
             "prev_position": prev_position,        # 今日信号执行前的策略仓位
             "sim_entry_date": sim_entry_date,
             "sim_entry_price": sim_entry_price,
+            "stop_price": stop_price,               # 引擎固定止损价 (自适应止损时为 None)
             "recent_actions": recent_actions,       # 最近5条回放操作 (对账用)
             "nz_mix_active": nz_mix_active,         # 纳指 QQQ 混合是否生效
             "nz_note": nz_note,
+            "crash_unknown": crash_unknown,          # 恐慌抄底今日无法判定(缺数据)的项
             "live_prices": {k: v for k, v in live.items()},
         }
 

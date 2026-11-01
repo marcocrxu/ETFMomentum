@@ -13,7 +13,9 @@
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+
+import pandas as pd
 
 
 def _load_env_file(path):
@@ -111,19 +113,84 @@ def suggestion_for(res, state):
         return ("保持空仓", "wait")
     # HOLD: 无新信号, 按 实际 vs 策略 对齐情况给建议
     if actual and actual == sim_pos:
-        return ("继续持有 %s（自 %s 起）" % (actual, entry), "hold")
+        # 日期优先用实际持仓的 entry_date (策略模拟入场日可能比实盘早, 如 2026-10-14 脏数据漏推)
+        return ("继续持有 %s（自 %s 起）" % (actual, state.get("entry_date") or entry), "hold")
     if actual and not sim_pos:
         return ("卖出 %s，空仓（对齐策略）" % actual, "cash")
+    if actual and sim_pos and actual != sim_pos:
+        # 实际与策略各持一只(如漏跟了历史信号) → 明确切换, 不得落回"空仓观望"
+        return ("卖出 %s，买入 %s（对齐策略仓位）" % (actual, sim_pos), "switch")
     if not actual and sim_pos:
         return ("买入 %s（对齐策略仓位）" % sim_pos, "switch")
     return ("继续空仓观望", "wait")
 
 
-def build_message(res, state):
-    """组装推送消息。res=LiveRunner.check() 结果, state=实际持仓。"""
+def data_integrity_problems(dfs, open_days, start=None, end=None):
+    """数据体检: 缓存交易日 vs 交易所日历, 返回问题描述列表。
+
+    2026-10-15 事故: 000001.SH 缓存混入一条周六行(2026-09-12) → 对齐日历多出一天,
+    其余标的当天全 NaN → 创业板指 MA200 变 NaN, 恐慌抄底被静默否决, 而 14:50 推送
+    与 21:30 收盘回放读的是同一份脏缓存, 两层一致地错 → 无人发现。
+    体检放在推送链路里, 异常直接进推送正文 (不再只写日志)。
+
+    dfs: {code: DataFrame(含 trade_date)}; open_days: 交易日集合(pd.Timestamp)。
+    """
+    problems = []
+    for code, df in sorted(dfs.items()):
+        if df is None or len(df) == 0 or "trade_date" not in df.columns:
+            continue
+        ds = pd.to_datetime(df["trade_date"])
+        if start is not None:
+            ds = ds[ds >= start]
+        if end is not None:
+            ds = ds[ds <= end]
+        if len(ds) == 0:
+            continue
+        bad = sorted(set(ds) - set(open_days))
+        if bad:
+            problems.append("%s 含 %d 个非交易日行: %s"
+                            % (code, len(bad), ", ".join(str(d.date()) for d in bad[:5])))
+        expect = {d for d in open_days if ds.min() <= d <= ds.max()}
+        miss = sorted(expect - set(ds))
+        if miss:
+            problems.append("%s 缺 %d 个交易日: %s"
+                            % (code, len(miss), ", ".join(str(d.date()) for d in miss[:5])))
+    return problems
+
+
+def _fetch_integrity_problems(feed, codes, days=120):
+    """拉最近 days 天的缓存做体检; 取数失败不阻断推送(返回告警文本)。"""
+    try:
+        end = datetime.now().strftime("%Y%m%d")
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+        dfs = feed.get_dataframe(codes, start, end)
+        cal = feed.pro.trade_cal(exchange="SSE", start_date=start, end_date=end)
+        open_days = set(pd.to_datetime(cal[cal["is_open"] == 1]["cal_date"], format="%Y%m%d"))
+        return data_integrity_problems(dfs, open_days, start=pd.Timestamp(start), end=pd.Timestamp(end))
+    except Exception as e:
+        return ["数据体检未能执行: %s" % e]
+
+
+def build_message(res, state, problems=None):
+    """组装推送消息。res=LiveRunner.check() 结果, state=实际持仓。
+    problems=数据体检问题列表(非空时置顶告警: 信号可能失真)。"""
     lines = ["📊 ETF 20日动量轮动 (共享引擎口径)", f"⏰ {res['date']}", ""]
 
+    if problems:
+        lines.append("🚨 **数据体检异常 —— 以下信号可能失真, 勿直接执行**")
+        for p in problems[:5]:
+            lines.append("  • %s" % p)
+        lines.append("")
+
+    # 恐慌抄底"无法判定"(缺数据被静默吞掉) —— 与"真的没触发"必须区分开
+    if res.get("crash_unknown"):
+        lines.append("🚨 **恐慌抄底今日无法判定**(缺数据, 不等于未触发):")
+        for p in res["crash_unknown"][:3]:
+            lines.append("  • %s" % p)
+        lines.append("")
+
     live = res.get("live_prices", {})
+    actual_pos = state.get("position") or None
     ranked = sorted(res["momentums"].items(), key=lambda x: -x[1])
     sim_pos = res.get("sim_position", "")
     prev_pos = res.get("prev_position", "")
@@ -145,6 +212,31 @@ def build_message(res, state):
     lines.extend(["", f"📋 **今日信号**: {sig}" + (f" → {target}" if target else "")])
     if reason:
         lines.append(f"    依据: {reason}")
+
+    # 实际持仓: 成本 / 现价 / 盈亏 / 距止损线 (以 state.json 的实际成本为锚)
+    if actual_pos and actual_pos in live and state.get("entry_price"):
+        _ep = float(state["entry_price"]); _px = live[actual_pos]
+        _line = ["💼 持仓: %s @%.3f (%s)" % (actual_pos, _ep, state.get("entry_date", "?"))]
+        if _px > 0:
+            _line.append("现价 ¥%.3f 盈亏 %+.2f%%" % (_px, (_px / _ep - 1) * 100))
+        # 止损线必须锚定"你手里这仓的成本": res["stop_price"] 是**策略模拟仓**的入场价 ×
+        # (1+stop_loss), 实际持仓与模拟仓不同时拿它冒充会误导 (2026-10-21~22 事故:
+        # 引擎按其模拟入场 2.891 触发 -5% 止损, 用户实际成本 2.786 当时只有 -2.62%,
+        # 推送却把纳指的止损线 2.195 印在创业持仓那一行)
+        _sim_sp = res.get("stop_price")
+        if actual_pos == sim_pos:
+            _sp, _tag = _sim_sp, "引擎止损线"
+        else:
+            _sp = round(_ep * (1 + production_config().stop_loss / 100.0), 4)
+            _tag = "实盘止损线(按你的成本)"
+        if _sp and _px > 0:
+            _gap = (_sp / _px - 1) * 100
+            _line.append("%s ¥%.3f (%s)" % (
+                _tag, _sp,
+                ("还差 %.2f%% 跌破" % -_gap) if _gap < 0 else ("已跌破 %.2f%%" % _gap)))
+            if _sim_sp and actual_pos != sim_pos:
+                _line.append("策略模拟仓[%s]止损线 ¥%.3f" % (sim_pos or "空仓", _sim_sp))
+        lines.append(" | ".join(_line))
 
     # 操作建议 (以实际持仓为锚, 与 /live 页同一函数)
     sug_text, _sug_level = suggestion_for(res, state)
@@ -205,9 +297,13 @@ def main(push=True, write=True):
         print("非交易日，跳过")
         return "非交易日"
 
-    # 3. 状态 + 消息
+    # 3. 数据体检 + 状态 + 消息
+    # (2026-10-15: 脏行曾让 14:50 推送与 21:30 对账一致地错, 体检必须进推送正文)
+    problems = _fetch_integrity_problems(feed, list(UNIVERSE.values()) + ["000001.SH", "399006.SZ"])
+    if problems:
+        print("数据体检异常: %s" % problems)
     state = load_state()
-    msg = build_message(res, state)
+    msg = build_message(res, state, problems=problems)
 
     # 4. 推送 + 完整落盘 (干跑也归档但标 dryrun, 便于区分"用户实际收到的")
     push_result = notify.push_all(msg) if push else {}
@@ -219,6 +315,7 @@ def main(push=True, write=True):
         "nz_mix_active": res.get("nz_mix_active"),
         "momentums": res.get("momentums"),
         "sh_momentum": res.get("sh_momentum"),
+        "data_problems": problems,
         "push": {k: v[0] for k, v in push_result.items()} if push_result else None,
     })
 

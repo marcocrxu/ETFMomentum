@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>赚钱效应 · 昨日买入的人今天赚没赚钱</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0f1115;color:#e6e6e6;margin:0}
+  .wrap{max-width:1120px;margin:0 auto;padding:18px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:#8a8f98;font-size:12px;margin-bottom:14px}
+  .card{background:#171a21;border:1px solid #242833;border-radius:10px;padding:14px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 10px;color:#cfd3dc}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .cell{background:#12151b;border:1px solid #22262f;border-radius:8px;padding:10px}
+  .cell .lab{font-size:12px;color:#8a8f98}
+  .cell .big{font-size:22px;font-weight:600;margin:4px 0}
+  .cell .small{font-size:11px;color:#7d828c;line-height:1.6}
+  .pos{color:#22c55e}.neg{color:#ef4444}.flat{color:#9ca3af}
+  .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#232833;color:#9aa1ad;margin-left:6px}
+  .chart{width:100%;height:380px}
+  .note{font-size:12px;color:#8a8f98;line-height:1.7}
+  .warn{background:#2a1d12;border:1px solid #5c3a1a;color:#f3b06b;padding:10px;border-radius:8px;font-size:12px;line-height:1.7;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:5px 6px;border-bottom:1px solid #232833;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:#8a8f98;font-weight:500}
+  .mx{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .mx table td{text-align:center;font-variant-numeric:tabular-nums}
+  .mx table th{text-align:center}
+  .sel{background:#12151b;color:#e6e6e6;border:1px solid #2a2f3a;border-radius:6px;padding:4px 8px;font-size:13px}
+  @media(max-width:820px){.mx{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💰 赚钱效应 · 昨日买入的人，今天赚没赚钱</h1>
+  <div class="sub" id="subtitle">加载中…</div>
+
+  <div class="warn">
+    <b>价格假设</b>：买入价取<b>信号日</b>（昨日）的开盘/最低/均价/收盘/最高，卖出价取<b>次日</b>的同五种价格；
+    收益 = 卖出价/买入价 − 1，组内等权。均价用 成交额÷成交量（VWAP）近似。
+    <br><b>可执行</b>口径 = 次日开盘买 → 第三日开盘/收盘卖（A股 T+1 最早可卖时点）。未扣交易成本。
+    <br>覆盖 2016 年至今；涨停判定按板块与年代分段（创业板 2020-08-24 前 10%、之后 20%；科创板 20%；主板 10%）。未剔 ST/次新。
+  </div>
+
+  <div class="card">
+    <h2>🅰️ 全 A · 最新交易日 <span id="d-all" class="tag"></span></h2>
+    <div class="grid" id="g-all"></div>
+  </div>
+
+  <div class="card">
+    <h2>🅱️ 创业板 · 最新交易日 <span id="d-cyb" class="tag"></span></h2>
+    <div class="grid" id="g-cyb"></div>
+  </div>
+
+  <div class="card">
+    <h2>价格假设矩阵 · <select id="sel-group" class="sel"></select> · 最新交易日</h2>
+    <div class="mx">
+      <div><div class="sub" style="margin:0 0 6px">全 A（行=买入价，列=卖出价）</div><table id="mx-all"></table></div>
+      <div><div class="sub" style="margin:0 0 6px">创业板</div><table id="mx-cyb"></table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>收益曲线（累计净值，对数轴）· <span id="curve-title"></span></h2>
+    <div id="chart-curve" class="chart"></div>
+  </div>
+
+  <div class="card">
+    <h2>分年：昨日涨停（基准 / 最优 / 可执行）</h2>
+    <div id="chart-year" class="chart" style="height:300px"></div>
+    <div id="tbl-year"></div>
+  </div>
+
+  <div class="card note">
+    <b>怎么读</b><br>
+    1. 矩阵里「最高买 → 最低卖」是最差假设，「最低买 → 最高卖」是最好的假设，真实成交落在两者之间；<br>
+    2. 同一行（同一买入价）横向比较能看出卖出时点值多少钱，同一列纵向比较能看出买入时点值多少钱；<br>
+    3. 昨日涨停那一行：基准（收盘买→收盘卖）常年最高，但「次日开盘买」的可执行值常常是负的——差额就是隔夜跳空；<br>
+    4. 这是「昨天那样做今天赚不赚」，<b>不是</b>预测明天的信号。
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='lib/echarts.min.js') }}"></script>
+<script>
+let DATA = null, CURVE_CHART = null;
+
+function cls(v){ return (v === null || v === undefined) ? 'flat' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : 'flat')); }
+function fmt(v, n){ if (v === null || v === undefined) return '—';
+  return (v > 0 ? '+' : '') + v.toFixed(n === undefined ? 2 : n) + '%'; }
+
+function renderCards(u, boxId){
+  const L = DATA.latest[u], box = document.getElementById(boxId);
+  let h = '';
+  L.groups.forEach(g => {
+    h += `<div class="cell">
+      <div class="lab">${g.icon} ${g.label}<span class="tag">${u==='all'?'全A':'创业板'}</span></div>
+      <div class="big ${cls(g.cc)}">${fmt(g.cc)}</div>
+      <div class="small">基准：收盘买 → 次日收盘卖</div>
+      <div class="small">最优(低买高卖) <span class="${cls(g.lh)}">${fmt(g.lh)}</span>
+        ｜ 最差(高买低卖) <span class="${cls(g.hl)}">${fmt(g.hl)}</span></div>
+      <div class="small">可执行：次日开盘买 → 第三日开盘 <span class="${cls(g.exec_open)}">${fmt(g.exec_open)}</span></div>
+    </div>`;
+  });
+  h += `<div class="cell"><div class="lab">📊 宽度 / 中位日收益</div>
+    <div class="big">${(L.breadth===null?'—':L.breadth.toFixed(1)+'%')}</div>
+    <div class="small">上涨家数占比 ｜ 中位 ${fmt(L.median,3)} ｜ 涨停 ${L.lim_n} 只</div></div>`;
+  box.innerHTML = h;
+}
+
+function renderMatrix(k){
+  ['all','cyb'].forEach(u => {
+    const m = DATA.matrix[u][k];
+    if (!m) return;
+    let h = '<tr><th>买\\卖</th>';
+    DATA.sells.forEach(s => h += `<th>${s.label}</th>`);
+    h += '</tr>';
+    DATA.buys.forEach(b => {
+      h += `<tr><th>${b.label}</th>`;
+      DATA.sells.forEach(s => {
+        const v = m[b.key][s.key];
+        h += `<td class="${cls(v)}">${v===null?'—':((v>0?'+':'')+v.toFixed(2)+'%')}</td>`;
+      });
+      h += '</tr>';
+    });
+    document.getElementById('mx-'+u).innerHTML = h;
+  });
+}
+
+function renderCurve(k){
+  const g = DATA.groups.find(x => x.key === k);
+  document.getElementById('curve-title').textContent = g ? g.icon + ' ' + g.label : '';
+  const c = DATA.curves[k];
+  const mk = (name, arr, color, dashed) => ({
+    name, type:'line', showSymbol:false, data:arr, connectNulls:true,
+    lineStyle:{width:1.6, color, type: dashed?'dashed':'solid'}, itemStyle:{color}
+  });
+  const series = [
+    mk('全A 最优(低买高卖)', c['all_lh'], '#22c55e'),
+    mk('全A 中位(均价买卖)', c['all_aa'], '#38bdf8'),
+    mk('全A 基准(收盘买卖)', c['all_cc'], '#f59e0b'),
+    mk('全A 最差(高买低卖)', c['all_hl'], '#ef4444'),
+    mk('创业板 基准', c['cyb_cc'], '#a855f7', true)
+  ];
+  if (!CURVE_CHART) { CURVE_CHART = echarts.init(document.getElementById('chart-curve')); }
+  CURVE_CHART.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis', formatter: p => p[0].axisValue + '<br>' + p.map(x =>
+      x.marker + x.seriesName + ': ' + (x.value>=1 ? x.value.toFixed(1)+'x' : (x.value*100).toFixed(1)+'%')).join('<br>')},
+    legend:{textStyle:{color:'#9aa1ad'}, top:0, type:'scroll'},
+    grid:{left:60,right:20,top:40,bottom:56},
+    dataZoom:[{type:'inside'},{type:'slider', height:14, bottom:4, backgroundColor:'#12151b',
+               fillerColor:'rgba(80,120,200,0.15)', borderColor:'#242833', textStyle:{color:'#6b7280'}}],
+    xAxis:{type:'category', data:DATA.series.dates, axisLabel:{color:'#6b7280'}, axisLine:{lineStyle:{color:'#2a2f3a'}}},
+    yAxis:{type:'log', logBase:10, axisLabel:{color:'#6b7280',
+             formatter: v => v>=1e4 ? (v/1e4).toFixed(0)+'万' : (v>=1 ? v.toFixed(v<10?1:0)+'x' : (v*100).toFixed(0)+'%')},
+           splitLine:{lineStyle:{color:'#20242d'}}},
+    series
+  }, true);
+  window.addEventListener('resize', () => CURVE_CHART.resize());
+}
+
+function renderYear(){
+  const all = DATA.yearly.all, cyb = DATA.yearly.cyb;
+  const chart = echarts.init(document.getElementById('chart-year'));
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis', valueFormatter: v => (v>0?'+':'') + v.toFixed(2) + '%'},
+    legend:{textStyle:{color:'#9aa1ad'}},
+    grid:{left:45,right:20,top:34,bottom:30},
+    xAxis:{type:'category', data: all.map(r=>r.year), axisLabel:{color:'#6b7280'}},
+    yAxis:{type:'value', axisLabel:{color:'#6b7280', formatter:'{value}%'}, splitLine:{lineStyle:{color:'#20242d'}}},
+    series:[
+      {name:'全A·涨停 基准(收盘买卖)', type:'bar', data: all.map(r=>r.lim), itemStyle:{color:'#ef4444'}},
+      {name:'全A·涨停 最优(低买高卖)', type:'bar', data: all.map(r=>r.lim_lh), itemStyle:{color:'#22c55e'}},
+      {name:'全A·涨停 可执行', type:'bar', data: all.map(r=>r.lim_exec), itemStyle:{color:'#7f1d1d'}},
+      {name:'创业板·涨停 基准', type:'bar', data: cyb.map(r=>r.lim), itemStyle:{color:'#a855f7'}}
+    ]
+  });
+  window.addEventListener('resize', () => chart.resize());
+
+  let h = '<table><tr><th>年份</th><th>全A 基准</th><th>全A 最优</th><th>全A 可执行</th>'
+        + '<th>创业板 基准</th><th>创业板 最优</th><th>全A 宽度</th><th>全A 日均涨停</th></tr>';
+  all.forEach((r, i) => {
+    const c = cyb[i] || {};
+    const f = v => `<span class="${cls(v)}">${fmt(v)}</span>`;
+    h += `<tr><td>${r.year}</td><td>${f(r.lim)}</td><td>${f(r.lim_lh)}</td><td>${f(r.lim_exec)}</td>`
+       + `<td>${f(c.lim)}</td><td>${f(c.lim_lh)}</td><td>${r.breadth}%</td><td>${r.lim_n}</td></tr>`;
+  });
+  document.getElementById('tbl-year').innerHTML = h + '</table>';
+}
+
+fetch('/api/earn/effect').then(r => r.json()).then(data => {
+  if (data.error) { document.getElementById('subtitle').textContent = data.error; return; }
+  DATA = data;
+  document.getElementById('subtitle').textContent =
+    `数据窗口 ${data.start} ~ ${data.date}（${data.days} 个交易日）· 昨日选股，次日按不同价格成交`;
+  document.getElementById('d-all').textContent = data.date;
+  document.getElementById('d-cyb').textContent = data.date;
+  renderCards('all','g-all'); renderCards('cyb','g-cyb');
+  const sel = document.getElementById('sel-group');
+  sel.innerHTML = data.groups.map(g => `<option value="${g.key}">${g.icon} ${g.label}</option>`).join('');
+  sel.onchange = () => { renderMatrix(sel.value); renderCurve(sel.value); };
+  renderMatrix(sel.value); renderCurve(sel.value); renderYear();
+}).catch(e => { document.getElementById('subtitle').textContent = '加载失败: ' + e; });
+</script>
+</body>
+</html>

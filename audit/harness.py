@@ -152,3 +152,29 @@ def save(obj, name):
     with open(f"/home/ecs-user/etf_strategy/audit/out/{name}.json", "w") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1, default=str)
     print(f"saved out/{name}.json")
+
+
+def diff_independence(base_decisions, var_decisions, bucket=("year",)):
+    """N-36 新增: **差异事件独立性检查** —— 面板"多起点全胜"是不是同一事件被数了多遍。
+
+    六起点面板的三个起点共享大部分样本；一个晚期事件（如 2024-10）会同时出现在所有窗口里，
+    制造"6/6 全胜"的假象。本函数把基线/变体的 decisions 逐条对齐，把差异归到时间桶，
+    返回集中度：若最大桶占比高（如 >60%），该变体的面板结果应降级为 n≈1，不能当独立证据。
+
+    返回 dict: n_diff(差异决策数), by_year{年: 差异数}, top_share(最大年份占比), concentrated(bool)
+    """
+    def key(d):
+        return (d["date"], d.get("action"), d.get("reason"))
+    kb = [key(x) for x in base_decisions]
+    kv = [key(x) for x in var_decisions]
+    sb, sv = set(kb), set(kv)
+    diff = [x for x in kb if x not in sv] + [x for x in kv if x not in sb]
+    by_year = {}
+    for d in diff:
+        y = str(d[0])[:4]
+        by_year[y] = by_year.get(y, 0) + 1
+    n = len(diff)
+    top = max(by_year.items(), key=lambda kv_: kv_[1]) if by_year else (None, 0)
+    share = (top[1] / n) if n else 0.0
+    return {"n_diff": n, "by_year": by_year, "top_year": top[0],
+            "top_share": round(share, 3), "concentrated": bool(n >= 3 and share >= 0.6)}

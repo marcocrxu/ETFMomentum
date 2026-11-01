@@ -88,6 +88,23 @@ def run_backtest(params):
         crash_sigma=float(params.get("crash_sigma", -2.5)),
         crash_enabled=params.get("crash_on", True),
         crash_lock=int(params.get("crash_lock", 7)),
+        # N-30 高低点结构门 (默认全关 = 生产基线逐分不变)
+        crash_hl_win=int(params.get("crash_hl_win", 0)),
+        crash_pos_max=float(params.get("crash_pos_max", 1.0)),
+        crash_dd_min=float(params.get("crash_dd_min", 0.0)),
+        crash_off_low_max=float(params.get("crash_off_low_max", 0.0)),
+        crash_reentry_gate=bool(params.get("crash_reentry_gate", False)),
+        exit_hl_win=int(params.get("exit_hl_win", 0)),
+        exit_dd_high=float(params.get("exit_dd_high", 0.0)),
+        exit_break_low=bool(params.get("exit_break_low", False)),
+        exit_hi_prox=float(params.get("exit_hi_prox", 0.0)),
+        accel_sigma_tight=float(params.get("accel_sigma_tight", 0.0)),
+        accel_dd_win=int(params.get("accel_dd_win", 60)),
+        accel_dd_trig=float(params.get("accel_dd_trig", 10.0)),
+        accel_regime=str(params.get("accel_regime", "")),
+        accel_regime_th=float(params.get("accel_regime_th", 0.0)),
+        chop_block_fast_buy=bool(params.get("chop_block_fast_buy", False)),
+        chop_block_rebuy_days=int(params.get("chop_block_rebuy_days", 0)),
         min_hold=int(params.get("min_hold", 10)),
         min_gap=float(params.get("min_gap", 1.0)),
         stop_loss=float(params.get("stop_loss", -5.0)),
@@ -96,6 +113,8 @@ def run_backtest(params):
         entry_mom_cap=float(params.get("entry_mom_cap", 0.0)),
         entry_decel_on=bool(params.get("entry_decel_on", False)),
         entry_bias_cap=float(params.get("entry_bias_cap", 0.0)),
+        nz_vol_gate=float(params.get("nz_vol_gate", 0.0)),
+        trail_stop=float(params.get("trail_stop", 0.0)),
         vol_scale_target=float(params.get("vol_scale_target", 0.0)),
         trend_ma=int(params.get("trend_ma", 0)),
         trend_ma_exempt=bool(params.get("trend_ma_exempt", False)),
@@ -280,6 +299,82 @@ def run_backtest(params):
     # 派生矩阵在全量历史上预计算再切片: accel阈值/mom60/vol/fip 与恐慌抄底同口径,
     # 消除窗口起点冷启动空白 (此前在切片后数据上expanding, 窗口前60天加速止盈静默失效)
     pre_mats = {"accel_th": calc_accel_thresholds(mom10_mat, cfg)[:, _pre_days:]}
+    if cfg.nz_vol_gate > 0 and "纳指" in etf_names:
+        # N-27 纳指放量门: 513100 量比 VOL20/VOL120, 全量历史算再切片 (成交量不在 price_mat 里)
+        _nz_code = name_to_code["纳指"]
+        if _nz_code in dfs:
+            _v = dfs[_nz_code].set_index("trade_date")["vol"].reindex(_all_full)
+            _vr = (_v.rolling(cfg.nz_vol_win).mean()
+                   / _v.rolling(cfg.nz_vol_base).mean()).values
+            _vrm = np.full(price_mat.shape, np.nan)
+            _vrm[etf_names.index("纳指")] = _vr
+            pre_mats["nz_vr"] = _vrm[:, _pre_days:]
+    if cfg.accel_sigma_tight > 0 or cfg.chop_block_fast_buy or cfg.chop_block_rebuy_days > 0:
+        # N-33 震荡期收紧止盈: 紧 σ 阈值矩阵 + regime 判据用的窗口高点, 全量历史算再切片
+        from strategy.signal import _roll_hilo as _rh
+        pre_mats["accel_th_tight"] = calc_accel_thresholds(
+            mom10_mat, cfg, sigma=cfg.accel_sigma_tight)[:, _pre_days:]
+        _ah = np.full(price_mat.shape, np.nan)
+        for _i in range(price_mat.shape[0]):
+            _ah[_i] = _rh(price_mat[_i], int(cfg.accel_dd_win))[0]
+        pre_mats["accel_hh"] = _ah[:, _pre_days:]
+        _rmode = (cfg.accel_regime or "").strip().lower()
+        if _rmode in ("width", "width_pct"):
+            _ri = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _h, _l = _rh(price_mat[_i], 20)
+                _ri[_i] = (_h - _l) / price_mat[_i] * 100.0
+        elif _rmode in ("momstd", "momstd_pct"):
+            _ri = np.array([pd.Series(mom10_mat[_i]).rolling(20).std().values
+                            for _i in range(price_mat.shape[0])])
+        else:
+            _ri = None
+        if _rmode == "composite":
+            _w0 = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _hw, _lw = _rh(price_mat[_i], 20)
+                _w0[_i] = (_hw - _lw) / price_mat[_i] * 100.0
+            pre_mats["regime_width_pct"] = np.array(
+                [pd.Series(_w0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                 for _i in range(_w0.shape[0])])[:, _pre_days:]
+            _m0 = np.array([pd.Series(mom10_mat[_i]).rolling(20).std().values
+                            for _i in range(price_mat.shape[0])])
+            pre_mats["regime_momstd_pct"] = np.array(
+                [pd.Series(_m0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                 for _i in range(_m0.shape[0])])[:, _pre_days:]
+            _p0 = np.abs(mom20_mat)
+            pre_mats["regime_mom_pct"] = np.array(
+                [pd.Series(_p0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                 for _i in range(_p0.shape[0])])[:, _pre_days:]
+        if _rmode == "combo":
+            _w0 = np.full(price_mat.shape, np.nan)
+            for _i in range(price_mat.shape[0]):
+                _hw, _lw = _rh(price_mat[_i], 20)
+                _w0[_i] = (_hw - _lw) / price_mat[_i] * 100.0
+            pre_mats["regime_width_pct"] = np.array(
+                [pd.Series(_w0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                 for _i in range(_w0.shape[0])])[:, _pre_days:]
+            _m0 = np.array([pd.Series(mom10_mat[_i]).rolling(20).std().values
+                            for _i in range(price_mat.shape[0])])
+            pre_mats["regime_momstd_pct"] = np.array(
+                [pd.Series(_m0[_i]).rolling(250, min_periods=120).rank(pct=True).values
+                 for _i in range(_m0.shape[0])])[:, _pre_days:]
+        if _ri is not None:
+            if _rmode.endswith("_pct"):
+                _ri = np.array([pd.Series(_ri[_i]).rolling(250, min_periods=120)
+                                .rank(pct=True).values for _i in range(_ri.shape[0])])
+            pre_mats["regime_ind"] = _ri[:, _pre_days:]
+    if cfg.exit_hl_win > 0:
+        # N-32 结构离场: HH(含当日) / LL(不含当日) 在全量历史上算再切片, 防冷启动空白
+        from strategy.signal import _roll_hilo
+        _hh = np.full(price_mat.shape, np.nan)
+        _ll = np.full(price_mat.shape, np.nan)
+        for _i in range(price_mat.shape[0]):
+            _h, _l = _roll_hilo(price_mat[_i], int(cfg.exit_hl_win))
+            _hh[_i] = _h
+            _ll[_i] = np.concatenate([[np.nan], _l[:-1]])   # 破底用"前 N 日", 不含当日
+        pre_mats["exit_hh"] = _hh[:, _pre_days:]
+        pre_mats["exit_ll"] = _ll[:, _pre_days:]
     if cfg.multi_mom:
         pre_mats["mom60"] = calc_mom60(price_mat)[:, _pre_days:]
     if (cfg.risk_adj_mom or cfg.stop_sigma > 0 or cfg.vol_scale_target > 0
