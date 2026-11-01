@@ -100,9 +100,12 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 ### 5.1 全站门禁与 HTTPS（2026-08-21 上线）
 
 - **门禁**：`web/app.py` 的 `before_request` — 除 `/mytrack/`、`/static/`、`/favicon.ico` 外全部路由要求 session cookie；只有访问 `/mytrack/<MYTRACK_KEY>`（或任意带正确密钥的 mytrack 路由）才种下 `authed` cookie。cookie：HttpOnly + SameSite=Lax + **Secure**（仅 HTTPS）。
-- **HTTPS**：Let's Encrypt shortlived **IP 证书**（`acme.sh --issue -d 8.219.57.219 --alpn --cert-profile shortlived`，约 6 天有效，ARI 自动续期）。正式入口 `https://8.219.57.219/`，nginx 443 → 8082/8081；临时实例配置 `/root/nginx_https.conf`，永久配置 `/etc/nginx/conf.d/etf_https.conf`（由 `bash /root/setup_https_permanent.sh` 安装）。
+- **HTTPS**：Let's Encrypt shortlived **IP 证书**（`acme.sh --issue -d 121.41.49.23 --webroot /home/ecs-user/acme_webroot --cert-profile shortlived`，约 6 天有效，ARI 自动续期）。正式入口 **`https://121.41.49.23/`**（本机 EIP，元数据可验；`8.219.57.219` 是**已停用的旧机器**，勿再引用），nginx 443 → 8082/8081；永久配置 `/etc/nginx/conf.d/etf_https.conf`。
 - 注意：**HTTP 通道已禁用**。`web/app.py` 应用层对 http 请求一律 403「HTTP 通道已禁用」（钉钉回调走 8081 不受影响）；`setup_https_permanent.sh` 会在 nginx 层把 80 整体断连（return 444）、8080 仅保留 `/api/dingtalk/` 与 `/static/charts/`（钉钉机器人回调+回复图片），其余路径 444 断连。用户入口统一 `https://8.219.57.219`。
-- 签发 IP 证书注意事项：ZeroSSL 已不支持 IP 标识；LE 需 `--cert-profile shortlived` + `--alpn`（443 端口验证，443 安全组已放行）。
+- 签发 IP 证书注意事项：ZeroSSL 已不支持 IP 标识；LE 需 `--cert-profile shortlived`（webroot 走 80 端口的 `/.well-known/acme-challenge/`）。
+- **⛔ 钉钉回调 = HTTP + 8080（2026-09-30 定案，别再试 https）**：钉钉机器人的"出网/消息接收地址"实际是 `http://121.41.49.23:8080/api/dingtalk/callback` —— 走的是**群自定义机器人的"出网"老机制**（该能力在现行官方文档里**已无条目**：537 页开发文档 + 1165 页帮助文档索引搜 `出网`/`outgoing` 均 0 命中；文档只覆盖 Stream 模式与**企业机器人 HTTP 模式**，后者要求"公网可访问的**HTTPS** 服务地址"且**必须发布应用**）。因此 nginx 必须始终保留 **listen 8080 的 `/api/dingtalk/` 入口**（老机 8.219.57.219 就有这个块 —— `POST http://8.219.57.219:8080/api/dingtalk/callback` 实测 502，说明 nginx 在、后端停；本机重构后丢了这块 → 钉钉回调静默失效，改 IP/改 https 都不通）。自检：`curl -X POST http://127.0.0.1:8080/api/dingtalk/callback -d '{}'` 应回 `{"errcode":1,"验证失败"}`。
+- **一键脚本（2026-09-30 新增）**：`bash live/setup_https_bot.sh` —— 自提权、幂等，6 步：证书现状 → 按需安装 → **回调入口加固（80/8080/443 全接；访问/错误日志进 journald；`nginx -t` 失败自动回滚；已加幂等保护，重复跑不会产生重复 location）** → 装 root cron 自动续期 → 端到端自检 → 结论。`--check` 只体检不改动，`--renew` 强制续期，`--restart` 顺带重启 web/bot。**任何重写 nginx 配置的操作（如旧的 `/root/setup_https_permanent.sh`）之后，都要重跑本脚本（或 `--check`），否则 8080 入口可能再次丢失、钉钉又哑。**
+- **陷阱（2026-09-30 事故，静默 20 天）**：续期任务以 ecs-user 身份跑，`--install-cert` 要写 `/etc/nginx/ssl/`（root 所有）→ 必然 `Permission denied`；而 acme.sh **失败时退出码仍是 0**，cron 又把输出丢进 `/dev/null` → 证书 09-10 过期后无人知晓（浏览器证书警告、https 不可用）。自动化必须放 **root cron**（脚本第 3 步自动装：每天 03:17 `acme.sh --cron`，日志 `~/.acme.sh/cron.log`）。另注：nginx 单元带 `PrivateTmp=yes`，访问日志**不能**写 `/tmp`（会落进私有命名空间，外面看不见），统一走 `syslog:...tag=nginx_dingtalk` 与 `tag=nginx_err` → 用 `journalctl -t nginx_dingtalk` / `-t nginx_err` 查。
 
 ## 6. 已固化的结论与"别重做"清单
 
@@ -128,6 +131,8 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 | 扩池 | — | **禁止** | F4 单调恶化 |
 | panic_drop（固定阈值急跌离场） | 0（关） | **已否决，默认关** | 2026-08-25：3/4/5% 全窗负优化 |
 | panic_vol_on（波动缩放急跌离场，同行 V12-C 口径） | False（关） | **已否决，默认关** | 2026-09-29 N-7：补测当年没测的**波动缩放**分支（`clip(K×VOL,2%,10%)`，含 V12-C 精确口径 `prior_max20_60×1.4`），3 窗 21 档无一跑赢基线（最好仍 -2.84pp、回撤深 7pp）。原因：纳指/黄金被 2% 下限钉死（59%/87% 交易日），退化为比 3% 更紧的固定止损。**1.5%~5% 整条带全负** |
+| nz_vol_gate（纳指放量门：513100 量比>X 禁止新买纳指） | **0（关，已入引擎+bt_runner）** | **已否决，默认关** | 2026-10-22 N-27：体检证据极强（IC -0.213/-0.214 两段一致，五分位单调 -0.90，控溢价/控波动后仍成立，引擎逐笔 高量比 +0.99% vs 低量比 +5.30%），但**正式消融四档全否**：六起点最高只 3/6 胜、中位全负、gate=1.0 在 2024 起点 **-15.0pp**。结论：**统计显著性 ≠ 可交易性**（IC 是全体日的时序关系，闸门只在入场那一刻生效且会拦掉好交易）。协议 `audit/n_vol_gate_protocol.md`，结果 `audit/out/n_vol_gate_ablation.json` |
+| trail_stop（移动止损/吊灯：从入场以来最高收盘回撤 X% 离场） | **0（关，已入引擎+bt_runner）** | **已否决，默认关** | 2026-10-22 N-29：主流趋势跟踪标配的退出方式，但六起点全否 （5% 中位 **-6.48pp**；8% -1.14；10% -1.26；12% 几乎不触发）。机制同 N-9/N-20：已有日频"不在场"机制（动量掉出就换、全池转弱空仓），叠加移动止损=对同一风险重复收费。协议 `audit/n_trail_stop_protocol.md`，结果 `audit/out/n_trail_stop_ablation.json` |
 | 加仓入场时机 (追加本金) | **立即追当前持仓** | ✅ 研究结论 (2026-08-21) | 立即追 ≈ 10日均分 > 等下次调仓; 四个口径一致, 尾部不对称全压在"等调仓"侧; 持黄金时差别最小。见 `backtest/加仓时机分析.md` + `backtest/add_capital_entry.py` |
 
 其他已否决：vol 归一化、regime 窗口解耦、EWMA/percentile 阈值口径、防御切换、多周期动量、风险调整动量、FIP、趋势门等——**未经用户同意不要重新启用**。
@@ -144,6 +149,7 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 - **QQQ-CNY 数据源周五缺失（2026-08-21 已修）**：`data/usfeed.py` 旧 inner join 让每周五的 QQQ 收盘无对应汇率行被丢弃（~20% 交易日缺失），且刷新永远落后一天 → 实盘推送持续"数据未就绪"回退纯ETF。已改 `merge_asof(backward)`；**基线因此重标定 3683.00/2.43 → 3729.95/2.51**，纯ETF口径(3595.1/2.09)不受影响。改数据源后必须重跑基线。
 - **Yahoo 被墙的兜底（2026-09-11 已修）**：本机连不上 Yahoo，`refresh_qqq_cny()` 自动切 新浪美股(QQQ)+中国货币网(USDCNY中间价)。中间价与 Yahoo 现货有稳定价差，兜底汇率**按重叠期比值中位数重定基**后才追加，防止接缝假跳变污染动量。
 - **实盘/回测口径一致性（2026-09-11 对齐）**：`live/runner.py` 必须与 `bt_runner` 同窗口语义：320 天预热 + `pre_days` + `accel_th` 全量预计算切片。此前实盘从决策区起点取数，expanding 阈值少一年历史，曾造成操作日期差 1 天。
+- **对账回放窗口短窗陷阱（2026-10-12 已修）**：`live/reconcile.py` 曾用"今天-120天"跑回放，expanding σ 样本从 2686 个交易日缩到 274 个 → 恐慌抄底触发线抬高 2.47pp（-8.35% → -5.88%）→ 09-28 上证 mom10（-6.10%）假触发"恐慌抄底"买创业，09-29/09-30/10-09 连报 3 天假"口径分歧"，10-12 假腿止损回纳指后期末仓位撞回一致、对账转绿把分叉掩盖。现固定 `REPLAY_START = LiveRunner.DECISION_START` + `replay_window_problem()` 窗口体检（<2000 交易日即告警且不做仓位对比），`tests/test_production_link.py` 钉死。**任何回测/对账/审计的起点都不许按"最近 N 天"临时截，阈值类指标（恐慌抄底/加速止盈/自适应止损）全部吃样本长度。**
 
 ## 7b. 2026-09-10 实盘分叉事故（血泪教训，架构红线）
 
@@ -156,6 +162,7 @@ PYTHONPATH=. python3 web/app.py                  # 端口 8082, http://127.0.0.1
 4. 通知完整落盘 `live/notify_log.jsonl`，事后必须能还原用户收到的每一个字。
 5. 每日对账 `live/reconcile.py`：收盘回放仓位 vs 实盘决策 vs 实际持仓，不一致当天告警。
 6. `tests/test_production_link.py` 钉死上述结构，改动前先跑 pytest。
+7. 对账回放窗口必须与实盘同源（`REPLAY_START = LiveRunner.DECISION_START`），禁止"今天-N天"临时截窗——短窗会把 expanding σ 阈值算歪，制造假信号和假分歧（2026-10-12 事故，见 §7）。
 
 ## 8. 协作习惯（与用户共事方式）
 
