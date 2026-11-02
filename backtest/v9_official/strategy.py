@@ -103,6 +103,12 @@ LEAD_EXIT = False       # 领导力背离: 沪深300的mom20>竞赛池最强mom2
 ZSCORE_CRASH = False    # 抄底触发改z-score: mom10<μ-2.5σ(自适应)替代固定-8%
 ZSCORE_ACCEL = False    # 加速止盈: mom10>μ+3σ -> 离场(z-score过热, 替代固定40%门)
 SAFE_MIN_VOL = False    # 保守兜底: 无人达标时持避险池中vol最低者(而非score最强)
+# --- N-41 移植试验(2026-11-02): 把"mom20 斜率门"搬到同行 v9 上, 检验对她是否同样有效 ---
+SLOPE_GATE_ON = False      # True=启用斜率门
+SLOPE_GATE_CODES = None    # 受限标的代码 tuple/set/None(=所有持仓标的)
+SLOPE_GATE_WIN = 10        # slope = mom20(t) - mom20(t-win)
+SLOPE_GATE_MOM_MIN = 0.0   # 仅当 mom20 >= 此比例才生效 (0.0=0%)
+SLOPE_GATE_PERSIST = 3     # 斜率须连续 N 天为负才离场
 VOL_BUFFER = 0.0        # ATR缩放缓冲: buf=K*vol20*sqrt(20), 替代固定2%; 0=关闭
 
 
@@ -187,6 +193,21 @@ def indicators(closes, volumes=None):
     else:
         donchian_low = 0.0
     above_donchian = closes[-1] >= donchian_low
+    # N-41 斜率门: slope_ok=True 表示"mom20>=门槛 且 连续 PERSIST 天斜率<0"
+    slope_hit = False
+    if SLOPE_GATE_ON:
+        _W = SLOPE_GATE_WIN
+        _P = max(int(SLOPE_GATE_PERSIST), 1)
+        if len(closes) > _W + MOM_MAIN + _P + 1:
+            def _mom20_at(k):   # k=0 为今日
+                return closes[-1 - k] / closes[-1 - k - MOM_MAIN] - 1.0
+            slope_hit = True
+            for _k in range(_P):
+                _now = _mom20_at(_k)
+                _old = _mom20_at(_k + _W)
+                if not (_now >= SLOPE_GATE_MOM_MIN and (_now - _old) < 0):
+                    slope_hit = False
+                    break
     er20 = 1.0
     rets_tail = None
     if ER_BUFFER_ON or REL_BUFFER_ON:
@@ -328,7 +349,7 @@ def indicators(closes, volumes=None):
             "hist_pct": hist_pct, "mom20_peak20": mom20_peak20, "donchian_low": donchian_low,
             "above_donchian": above_donchian, "er20": er20, "rets_tail": rets_tail,
             "vol_ratio": vol_ratio, "vol_in_ratio": vol_in_ratio, "dist_ma250": dist_ma250,
-            "mom10_z": mom10_z}
+            "mom10_z": mom10_z, "slope_hit": slope_hit}
 
 
 def rank(histories, on_date=None, live_prices=None):
@@ -437,6 +458,9 @@ def _exit_hit(ind):
         return "RSI 跌破 50"
     if ZSCORE_ACCEL and ind["mom10_z"] > 3.0:
         return "加速止盈(mom10 z=%.1f)" % ind["mom10_z"]
+    if SLOPE_GATE_ON and ind.get("slope_hit"):
+        return "动量斜率转负(mom20 连续%d日下滑, 当前 %+.1f%%)" % (
+            int(SLOPE_GATE_PERSIST), ind["mom20"] * 100)
     return None
 
 
@@ -506,6 +530,10 @@ def decide(table, holding, holding_days=99):
             # 制度性离场(A股池), 优先于滞回缓冲
             return target, "熊市体制确立, A股持仓无条件离场 -> %s" % UNIVERSE[target][0]
         exit_why = _exit_hit(h)
+        if exit_why and exit_why.startswith("动量斜率"):
+            # N-41: 斜率门只对指定标的生效 (SLOPE_GATE_CODES=None 即全部)
+            if SLOPE_GATE_CODES is not None and holding not in SLOPE_GATE_CODES:
+                exit_why = None
         if exit_why:
             return target, "%s, 离场 -> %s" % (exit_why, UNIVERSE[target][0])
         if MIN_HOLD and holding_days < MIN_HOLD and holding != CASH:

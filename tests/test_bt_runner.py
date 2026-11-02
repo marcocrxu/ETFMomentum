@@ -185,7 +185,9 @@ class TestNzMomQqqBlend:
         r = run_backtest({"universe": "纳指,黄金,创业",
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
                           "nz_mom_qqq_on": False, "accel_cooldown": 0,
-                          "accel_cooldown_gold_only": False})
+                          "accel_cooldown_gold_only": False,
+                          # 本测试只隔离 QQQ 混合一个变量: 显式关掉后加的斜率门(N-42 默认开), 否则基准改了
+                          "slope_gate_names": ""})
         assert abs(r["total_ret"] - 3595.1) < 0.5, "on=False 应回到纯ETF基线 3595.1"
 
     def test_on_w1_differs_and_checks_ok(self):
@@ -194,7 +196,9 @@ class TestNzMomQqqBlend:
         r = run_backtest({"universe": "纳指,黄金,创业",
                           "start_date": "2016-07-07", "end_date": "2026-08-12",
                           "nz_mom_qqq_on": True, "nz_mom_qqq_w": 1.0,
-                          "accel_cooldown": 0, "accel_cooldown_gold_only": False})
+                          "accel_cooldown": 0, "accel_cooldown_gold_only": False,
+                          # 同上: 隔离 QQQ 变量, 斜率门(N-42)显式关闭
+                          "slope_gate_names": ""})
         assert abs(r["total_ret"] - 3198.51) < 0.5, "w=1.0 应与 I-2 纯QQQ口径一致 (2026-08-21 补齐周五数据后重标定)"
         assert "error" not in r, r.get("error")
         assert r["checks"] == ["OK"], r["checks"]

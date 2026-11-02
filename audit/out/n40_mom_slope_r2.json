@@ -1,0 +1,882 @@
+{
+ "baseline": {
+  "2016-01-01": {
+   "ann_ret": 40.54,
+   "max_dd": -18.08,
+   "calmar": 2.24,
+   "trade_count": 252
+  },
+  "2018-01-01": {
+   "ann_ret": 45.64,
+   "max_dd": -18.82,
+   "calmar": 2.43,
+   "trade_count": 265
+  },
+  "2020-01-01": {
+   "ann_ret": 45.56,
+   "max_dd": -19.62,
+   "calmar": 2.32,
+   "trade_count": 176
+  },
+  "2022-01-01": {
+   "ann_ret": 44.36,
+   "max_dd": -18.34,
+   "calmar": 2.42,
+   "trade_count": 132
+  },
+  "2024-01-01": {
+   "ann_ret": 57.8,
+   "max_dd": -17.67,
+   "calmar": 3.27,
+   "trade_count": 83
+  }
+ },
+ "variants": [
+  {
+   "tag": "w10 p1 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "5/5",
+   "median": 8.58,
+   "worst": 4.09,
+   "dd_median": 3.55,
+   "trade_ratio": 1.63,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 44.63,
+     "dd": -14.53,
+     "cal": 3.07,
+     "trades": 415
+    },
+    "2018-01-01": {
+     "ann": 52.38,
+     "dd": -18.82,
+     "cal": 2.78,
+     "trades": 400
+    },
+    "2020-01-01": {
+     "ann": 55.71,
+     "dd": -19.62,
+     "cal": 2.84,
+     "trades": 289
+    },
+    "2022-01-01": {
+     "ann": 52.94,
+     "dd": -14.53,
+     "cal": 3.64,
+     "trades": 197
+    },
+    "2024-01-01": {
+     "ann": 76.95,
+     "dd": -13.27,
+     "cal": 5.8,
+     "trades": 135
+    }
+   }
+  },
+  {
+   "tag": "w10 p1 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "5/5",
+   "median": 4.0,
+   "worst": 1.85,
+   "dd_median": 3.06,
+   "trade_ratio": 1.31,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.9,
+     "dd": -15.02,
+     "cal": 2.86,
+     "trades": 333
+    },
+    "2018-01-01": {
+     "ann": 47.49,
+     "dd": -18.82,
+     "cal": 2.52,
+     "trades": 343
+    },
+    "2020-01-01": {
+     "ann": 49.56,
+     "dd": -19.62,
+     "cal": 2.53,
+     "trades": 243
+    },
+    "2022-01-01": {
+     "ann": 49.15,
+     "dd": -14.78,
+     "cal": 3.33,
+     "trades": 170
+    },
+    "2024-01-01": {
+     "ann": 70.86,
+     "dd": -13.27,
+     "cal": 5.34,
+     "trades": 109
+    }
+   }
+  },
+  {
+   "tag": "w10 p1 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "3/5",
+   "median": 0.34,
+   "worst": -2.17,
+   "dd_median": 3.14,
+   "trade_ratio": 1.24,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 41.29,
+     "dd": -14.94,
+     "cal": 2.76,
+     "trades": 309
+    },
+    "2018-01-01": {
+     "ann": 43.47,
+     "dd": -19.1,
+     "cal": 2.28,
+     "trades": 323
+    },
+    "2020-01-01": {
+     "ann": 43.91,
+     "dd": -19.62,
+     "cal": 2.24,
+     "trades": 221
+    },
+    "2022-01-01": {
+     "ann": 44.7,
+     "dd": -14.78,
+     "cal": 3.02,
+     "trades": 161
+    },
+    "2024-01-01": {
+     "ann": 64.25,
+     "dd": -13.27,
+     "cal": 4.84,
+     "trades": 103
+    }
+   }
+  },
+  {
+   "tag": "w10 p3 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "5/5",
+   "median": 7.77,
+   "worst": 4.92,
+   "dd_median": 3.19,
+   "trade_ratio": 1.39,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 45.46,
+     "dd": -14.89,
+     "cal": 3.05,
+     "trades": 346
+    },
+    "2018-01-01": {
+     "ann": 51.0,
+     "dd": -18.82,
+     "cal": 2.71,
+     "trades": 346
+    },
+    "2020-01-01": {
+     "ann": 53.33,
+     "dd": -19.62,
+     "cal": 2.72,
+     "trades": 236
+    },
+    "2022-01-01": {
+     "ann": 53.16,
+     "dd": -14.89,
+     "cal": 3.57,
+     "trades": 172
+    },
+    "2024-01-01": {
+     "ann": 76.95,
+     "dd": -13.27,
+     "cal": 5.8,
+     "trades": 115
+    }
+   }
+  },
+  {
+   "tag": "w10 p3 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "5/5",
+   "median": 1.9,
+   "worst": 1.3,
+   "dd_median": 0.26,
+   "trade_ratio": 1.27,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.44,
+     "dd": -17.82,
+     "cal": 2.38,
+     "trades": 305
+    },
+    "2018-01-01": {
+     "ann": 46.94,
+     "dd": -18.82,
+     "cal": 2.49,
+     "trades": 311
+    },
+    "2020-01-01": {
+     "ann": 48.25,
+     "dd": -19.62,
+     "cal": 2.46,
+     "trades": 214
+    },
+    "2022-01-01": {
+     "ann": 45.79,
+     "dd": -15.37,
+     "cal": 2.98,
+     "trades": 158
+    },
+    "2024-01-01": {
+     "ann": 64.74,
+     "dd": -13.39,
+     "cal": 4.83,
+     "trades": 105
+    }
+   }
+  },
+  {
+   "tag": "w10 p3 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "5/5",
+   "median": 5.34,
+   "worst": 3.12,
+   "dd_median": 3.3,
+   "trade_ratio": 1.18,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 43.87,
+     "dd": -14.78,
+     "cal": 2.97,
+     "trades": 288
+    },
+    "2018-01-01": {
+     "ann": 48.76,
+     "dd": -18.82,
+     "cal": 2.59,
+     "trades": 298
+    },
+    "2020-01-01": {
+     "ann": 50.9,
+     "dd": -19.62,
+     "cal": 2.59,
+     "trades": 201
+    },
+    "2022-01-01": {
+     "ann": 51.22,
+     "dd": -14.78,
+     "cal": 3.47,
+     "trades": 149
+    },
+    "2024-01-01": {
+     "ann": 73.31,
+     "dd": -13.27,
+     "cal": 5.52,
+     "trades": 98
+    }
+   }
+  },
+  {
+   "tag": "w10 p5 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "5/5",
+   "median": 4.8,
+   "worst": 2.83,
+   "dd_median": 0.01,
+   "trade_ratio": 1.17,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 43.37,
+     "dd": -18.07,
+     "cal": 2.4,
+     "trades": 308
+    },
+    "2018-01-01": {
+     "ann": 49.3,
+     "dd": -18.82,
+     "cal": 2.62,
+     "trades": 312
+    },
+    "2020-01-01": {
+     "ann": 50.36,
+     "dd": -19.62,
+     "cal": 2.57,
+     "trades": 208
+    },
+    "2022-01-01": {
+     "ann": 50.89,
+     "dd": -14.53,
+     "cal": 3.5,
+     "trades": 152
+    },
+    "2024-01-01": {
+     "ann": 71.46,
+     "dd": -13.27,
+     "cal": 5.39,
+     "trades": 97
+    }
+   }
+  },
+  {
+   "tag": "w10 p5 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "5/5",
+   "median": 1.97,
+   "worst": 0.94,
+   "dd_median": 0.0,
+   "trade_ratio": 1.08,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 41.48,
+     "dd": -18.23,
+     "cal": 2.28,
+     "trades": 285
+    },
+    "2018-01-01": {
+     "ann": 46.71,
+     "dd": -18.82,
+     "cal": 2.48,
+     "trades": 294
+    },
+    "2020-01-01": {
+     "ann": 47.53,
+     "dd": -19.62,
+     "cal": 2.42,
+     "trades": 193
+    },
+    "2022-01-01": {
+     "ann": 49.53,
+     "dd": -16.11,
+     "cal": 3.07,
+     "trades": 141
+    },
+    "2024-01-01": {
+     "ann": 68.44,
+     "dd": -13.27,
+     "cal": 5.16,
+     "trades": 90
+    }
+   }
+  },
+  {
+   "tag": "w10 p5 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 10,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "5/5",
+   "median": 1.2,
+   "worst": 0.39,
+   "dd_median": 0.01,
+   "trade_ratio": 1.08,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 40.93,
+     "dd": -18.07,
+     "cal": 2.27,
+     "trades": 279
+    },
+    "2018-01-01": {
+     "ann": 46.32,
+     "dd": -18.82,
+     "cal": 2.46,
+     "trades": 289
+    },
+    "2020-01-01": {
+     "ann": 46.76,
+     "dd": -19.62,
+     "cal": 2.38,
+     "trades": 192
+    },
+    "2022-01-01": {
+     "ann": 48.08,
+     "dd": -16.11,
+     "cal": 2.98,
+     "trades": 141
+    },
+    "2024-01-01": {
+     "ann": 65.66,
+     "dd": -13.27,
+     "cal": 4.95,
+     "trades": 90
+    }
+   }
+  },
+  {
+   "tag": "w15 p1 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "4/5",
+   "median": 2.99,
+   "worst": -0.4,
+   "dd_median": 3.43,
+   "trade_ratio": 1.49,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 41.56,
+     "dd": -14.65,
+     "cal": 2.84,
+     "trades": 383
+    },
+    "2018-01-01": {
+     "ann": 45.24,
+     "dd": -18.82,
+     "cal": 2.4,
+     "trades": 377
+    },
+    "2020-01-01": {
+     "ann": 48.55,
+     "dd": -19.62,
+     "cal": 2.47,
+     "trades": 267
+    },
+    "2022-01-01": {
+     "ann": 49.16,
+     "dd": -14.53,
+     "cal": 3.38,
+     "trades": 179
+    },
+    "2024-01-01": {
+     "ann": 68.12,
+     "dd": -13.27,
+     "cal": 5.13,
+     "trades": 124
+    }
+   }
+  },
+  {
+   "tag": "w15 p1 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "3/5",
+   "median": 1.33,
+   "worst": -0.46,
+   "dd_median": 0.0,
+   "trade_ratio": 1.22,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 41.87,
+     "dd": -18.73,
+     "cal": 2.24,
+     "trades": 315
+    },
+    "2018-01-01": {
+     "ann": 45.18,
+     "dd": -18.82,
+     "cal": 2.4,
+     "trades": 323
+    },
+    "2020-01-01": {
+     "ann": 45.14,
+     "dd": -24.0,
+     "cal": 1.88,
+     "trades": 224
+    },
+    "2022-01-01": {
+     "ann": 47.61,
+     "dd": -14.78,
+     "cal": 3.22,
+     "trades": 152
+    },
+    "2024-01-01": {
+     "ann": 64.77,
+     "dd": -13.27,
+     "cal": 4.88,
+     "trades": 101
+    }
+   }
+  },
+  {
+   "tag": "w15 p1 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 1,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "5/5",
+   "median": 2.18,
+   "worst": 0.62,
+   "dd_median": 0.94,
+   "trade_ratio": 1.16,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.72,
+     "dd": -17.14,
+     "cal": 2.49,
+     "trades": 302
+    },
+    "2018-01-01": {
+     "ann": 46.61,
+     "dd": -18.82,
+     "cal": 2.48,
+     "trades": 310
+    },
+    "2020-01-01": {
+     "ann": 46.18,
+     "dd": -25.36,
+     "cal": 1.82,
+     "trades": 214
+    },
+    "2022-01-01": {
+     "ann": 49.19,
+     "dd": -14.78,
+     "cal": 3.33,
+     "trades": 147
+    },
+    "2024-01-01": {
+     "ann": 67.79,
+     "dd": -13.27,
+     "cal": 5.11,
+     "trades": 96
+    }
+   }
+  },
+  {
+   "tag": "w15 p3 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "5/5",
+   "median": 1.72,
+   "worst": 0.34,
+   "dd_median": 3.45,
+   "trade_ratio": 1.37,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.26,
+     "dd": -14.54,
+     "cal": 2.91,
+     "trades": 326
+    },
+    "2018-01-01": {
+     "ann": 45.98,
+     "dd": -18.82,
+     "cal": 2.44,
+     "trades": 330
+    },
+    "2020-01-01": {
+     "ann": 46.75,
+     "dd": -19.62,
+     "cal": 2.38,
+     "trades": 228
+    },
+    "2022-01-01": {
+     "ann": 47.03,
+     "dd": -14.89,
+     "cal": 3.16,
+     "trades": 167
+    },
+    "2024-01-01": {
+     "ann": 64.93,
+     "dd": -13.27,
+     "cal": 4.89,
+     "trades": 114
+    }
+   }
+  },
+  {
+   "tag": "w15 p3 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "5/5",
+   "median": 0.47,
+   "worst": 0.23,
+   "dd_median": 2.89,
+   "trade_ratio": 1.19,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.16,
+     "dd": -15.19,
+     "cal": 2.78,
+     "trades": 294
+    },
+    "2018-01-01": {
+     "ann": 45.87,
+     "dd": -18.82,
+     "cal": 2.44,
+     "trades": 304
+    },
+    "2020-01-01": {
+     "ann": 46.03,
+     "dd": -19.62,
+     "cal": 2.35,
+     "trades": 206
+    },
+    "2022-01-01": {
+     "ann": 44.79,
+     "dd": -14.78,
+     "cal": 3.03,
+     "trades": 150
+    },
+    "2024-01-01": {
+     "ann": 62.2,
+     "dd": -13.27,
+     "cal": 4.69,
+     "trades": 99
+    }
+   }
+  },
+  {
+   "tag": "w15 p3 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 3,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "0/5",
+   "median": -2.16,
+   "worst": -2.76,
+   "dd_median": 0.49,
+   "trade_ratio": 1.16,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 40.06,
+     "dd": -17.59,
+     "cal": 2.28,
+     "trades": 286
+    },
+    "2018-01-01": {
+     "ann": 43.26,
+     "dd": -18.82,
+     "cal": 2.3,
+     "trades": 295
+    },
+    "2020-01-01": {
+     "ann": 43.4,
+     "dd": -19.62,
+     "cal": 2.21,
+     "trades": 200
+    },
+    "2022-01-01": {
+     "ann": 41.6,
+     "dd": -15.38,
+     "cal": 2.7,
+     "trades": 147
+    },
+    "2024-01-01": {
+     "ann": 56.14,
+     "dd": -13.39,
+     "cal": 4.19,
+     "trades": 96
+    }
+   }
+  },
+  {
+   "tag": "w15 p5 cd0",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 0
+   },
+   "wins": "5/5",
+   "median": 3.34,
+   "worst": 1.96,
+   "dd_median": 0.01,
+   "trade_ratio": 1.25,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 42.52,
+     "dd": -18.07,
+     "cal": 2.35,
+     "trades": 295
+    },
+    "2018-01-01": {
+     "ann": 47.6,
+     "dd": -18.82,
+     "cal": 2.53,
+     "trades": 303
+    },
+    "2020-01-01": {
+     "ann": 49.18,
+     "dd": -19.62,
+     "cal": 2.51,
+     "trades": 204
+    },
+    "2022-01-01": {
+     "ann": 47.7,
+     "dd": -14.89,
+     "cal": 3.2,
+     "trades": 155
+    },
+    "2024-01-01": {
+     "ann": 65.22,
+     "dd": -13.27,
+     "cal": 4.91,
+     "trades": 104
+    }
+   }
+  },
+  {
+   "tag": "w15 p5 cd5",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 5
+   },
+   "wins": "5/5",
+   "median": 5.19,
+   "worst": 2.74,
+   "dd_median": 0.01,
+   "trade_ratio": 1.13,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 43.28,
+     "dd": -18.07,
+     "cal": 2.4,
+     "trades": 273
+    },
+    "2018-01-01": {
+     "ann": 48.69,
+     "dd": -18.82,
+     "cal": 2.59,
+     "trades": 285
+    },
+    "2020-01-01": {
+     "ann": 50.75,
+     "dd": -19.62,
+     "cal": 2.59,
+     "trades": 191
+    },
+    "2022-01-01": {
+     "ann": 50.19,
+     "dd": -14.78,
+     "cal": 3.4,
+     "trades": 145
+    },
+    "2024-01-01": {
+     "ann": 70.0,
+     "dd": -13.27,
+     "cal": 5.27,
+     "trades": 94
+    }
+   }
+  },
+  {
+   "tag": "w15 p5 cd10",
+   "params": {
+    "slope_gate_names": "创业",
+    "slope_gate_win": 15,
+    "slope_gate_mode": "exit",
+    "slope_gate_persist": 5,
+    "slope_gate_cooldown": 10
+   },
+   "wins": "5/5",
+   "median": 1.06,
+   "worst": 0.65,
+   "dd_median": 0.01,
+   "trade_ratio": 1.11,
+   "per_start": {
+    "2016-01-01": {
+     "ann": 41.27,
+     "dd": -18.07,
+     "cal": 2.28,
+     "trades": 267
+    },
+    "2018-01-01": {
+     "ann": 46.29,
+     "dd": -18.82,
+     "cal": 2.46,
+     "trades": 281
+    },
+    "2020-01-01": {
+     "ann": 47.36,
+     "dd": -19.62,
+     "cal": 2.41,
+     "trades": 189
+    },
+    "2022-01-01": {
+     "ann": 45.42,
+     "dd": -15.38,
+     "cal": 2.95,
+     "trades": 143
+    },
+    "2024-01-01": {
+     "ann": 60.88,
+     "dd": -13.39,
+     "cal": 4.55,
+     "trades": 92
+    }
+   }
+  }
+ ]
+}

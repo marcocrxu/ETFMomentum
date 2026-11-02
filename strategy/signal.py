@@ -299,6 +299,26 @@ class SignalConfig:
     crash_mom5_span: int = 5       # 短窗口跨度(交易日), 固定 5 (同行 MOM5 口径)
     crash_mom5_pct: float = -8.0   # add/repl 的 5 日跌幅阈值(%), 如 -8 表示 MOM5<=-8%
     crash_mom5_z: float = -2.0     # zs 模式的 z 门槛 (MOM5 用当日之前的滚动 σ5 标准化)
+    # ── N-40/41/42 mom20 斜率门 (2026-11-02): 【已转正, 默认开启】 ──
+    # 机制: 动量仍在(mom20>=mom_min)但斜率(动量变化率)已转负 = 动量衰竭 → 提前离场。
+    # 无前视: slope = mom20(t) - mom20(t-win), 两个 mom20 都只用 t 及之前的价格。
+    # 上线依据 (audit/审计结果清单.md N-42):
+    #   - 五起点(2016/18/20/22/24-01 起 → 2026-10-29): 年化中位 +8.92pp, 最差 +6.12pp, 5/5 胜;
+    #     回撤中位改善 +1.02pp; Calmar 中位 +0.51, 5/5 胜。
+    #   - 参数平台: persist=5 固定时 win 从 8 到 25 共 9 档全部 5/5 胜为正 (win=5 为负, 短窗口误伤)。
+    #   - 成本档: 单边 6bp 仍全面优于基线。
+    #   - 事件独立性: 2016~2022 四起点差异占比 28%~51%, 不集中; 2024 起点 64% 集中 2025 年(该格降级 n≈1)。
+    #   - 跨策略互证: 同行 v9 同机制在创业板 5/5 胜 (+1.0~+2.2pp, 平台非尖峰), 见 N-41。
+    # 只对【创业, 黄金】生效: 纳指实测 -5.76pp(0/5), 因其 mom20 混入 513100 的 QDII 溢价噪声 (N-23 记录
+    # 溢价单日变化绝对均值 1.24% / 最大 13%), 斜率门无法区分"动量衰竭"与"溢价回落"。
+    slope_gate_names: str = "创业,黄金"   # 被约束标的(逗号分隔); "" = 关闭整个斜率门
+    slope_gate_win: int = 12       # slope = mom20(t) - mom20(t-12)
+    slope_gate_mode: str = "exit"  # exit=斜率转负离场 / tight=加速止盈 σ 收紧
+    slope_gate_sigma: float = 2.0  # tight 模式下使用的 σ
+    slope_gate_mom_min: float = 0.0  # 仅当 mom20 >= 此值(%)才生效
+    # 抗抖动: 无状态机时会出现"持有1天卖出/次日买回"反复 (N-40 首轮实测 58% 离场持有≤1天), p>=3 必须。
+    slope_gate_persist: int = 5    # 斜率须连续 N 天为负才触发 (N-40: p=5 是稳定平台, p=2 整行为负)
+    slope_gate_cooldown: int = 0   # 斜率离场后 N 天禁止买回 (N-42: 固定冷却无单调改进, 保持 0)
     # ── N-32 N 日高低点结构离场 (默认全关 = 生产基线逐分不变) ──
     exit_hl_win: int = 0           # 结构离场窗口(交易日): 60≈3个月 / 120≈6个月; 0=关闭
     exit_dd_high: float = 0.0      # 回撤离场: 现价距 N 日最高点回撤 ≥ 此值(%) 即离场 (0=关)
@@ -959,6 +979,7 @@ def compute_signals(
     accel_gate = np.zeros(n_etfs, dtype=bool)       # 止盈再入场闸门 (按标的, mom10回落解除)
     sh_cash_block_until = -1                        # 空仓再入场冷却状态
     stop_block_until = np.full(n_etfs, -1)          # 止损冷却状态 (按标的独立计时)
+    slope_block_until = np.full(n_etfs, -1)         # N-40 斜率离场冷却 (按标的独立计时)
     crash_alloc_now = 0.0                           # 恐慌抄底当前仓位比例 (0=无抄底叠加仓)
     crash_base_pos = -1                             # 抄底前的名义主仓 (用于组合净值计算; -1=空仓抄底)
     # ── B4 抄底再入场闸门 (N-31, 默认关): 抄底仓被止损后, 须等恐慌条件解除才准再抄底 ──
@@ -1282,15 +1303,45 @@ def compute_signals(
 
     def accel_line(i, t):
         """加速止盈阈值: 震荡 regime 成立时改用 accel_sigma_tight 算出的更紧阈值,
-        否则仍用正常 accel_sigma。"""
+        否则仍用正常 accel_sigma。N-40 tight 模式: 斜率转负时同样收紧。"""
         th = accel_th_mat[i, t]
-        if cfg.accel_sigma_tight <= 0 or _accel_tight is None:
-            return th
         if i < 0 or t < 0:
             return th
-        if _regime_chop(i, t):
+        if cfg.accel_sigma_tight > 0 and _accel_tight is not None and _regime_chop(i, t):
             return _accel_tight[i, t]
+        if _slope_gate_hit(i, t) and cfg.slope_gate_mode == "tight":
+            return _accel_tight_slope[i, t] if _accel_tight_slope is not None else th
         return th
+
+    # ── N-40 mom20 斜率门 (2026-11-02): 只作用于 slope_gate_names 内的标的 ──
+    _slope_names = {x.strip() for x in cfg.slope_gate_names.split(",") if x.strip()}
+    _slope_idx = {etf_names.index(n) for n in _slope_names if n in etf_names}
+    _accel_tight_slope = None
+    if _slope_idx and cfg.slope_gate_mode == "tight" and cfg.slope_gate_sigma > 0:
+        _accel_tight_slope = calc_accel_thresholds(mom10_mat, cfg, sigma=cfg.slope_gate_sigma)
+
+    def _slope_gate_hit(i, t):
+        """N-40: 该标的 mom20 >= mom_min 且斜率(mom20(t)-mom20(t-win))转负 → True。
+        只用 t 及之前数据, 无前视。slope_gate_persist>1 时要求连续 N 天为负。"""
+        if not _slope_idx or i not in _slope_idx or t < 0:
+            return False
+        if i >= mom20_mat.shape[0] or t >= mom20_mat.shape[1]:
+            return False
+        _pw = max(int(cfg.slope_gate_persist), 1)
+        for _k in range(_pw):
+            _tk = t - _k
+            if _tk < 0:
+                return False
+            _m = mom20_mat[i, _tk]
+            if np.isnan(_m) or _m < cfg.slope_gate_mom_min:
+                return False
+            _tw = _tk - int(cfg.slope_gate_win)
+            if _tw < 0:
+                return False
+            _old = mom20_mat[i, _tw]
+            if np.isnan(_old) or not (_m - _old < 0):
+                return False
+        return True
 
     tp_recent = np.full(n_etfs, -10 ** 9)      # N-37: 各标的最近一次加速止盈日
 
@@ -1502,6 +1553,12 @@ def compute_signals(
             sb = t < stop_block_until
             if sb.any():
                 score = np.where(sb, np.nan, score)
+
+        # ── N-40 斜率离场冷却: N天内禁止买回该标的 (防"卖出次日买回"抖动) ──
+        if cfg.slope_gate_cooldown > 0:
+            slb = t < slope_block_until
+            if slb.any():
+                score = np.where(slb, np.nan, score)
 
         # ── 止盈再入场闸门: mom10 回落到止盈阈值下方自动解除; 未解除者移出候选 ──
         if cfg.accel_reentry_gate and accel_gate.any():
@@ -1800,6 +1857,10 @@ def compute_signals(
                     reason = "移动止损"
                 else:
                     reason = "结构离场"
+            elif not sw and cfg.slope_gate_mode == "exit" and _slope_gate_hit(pos, t):
+                # N-40 斜率离场: 动量仍在但斜率转负 → 切向当前更优候选(无更优则清仓)
+                # 注意: 仅在 ti != pos 分支; 持仓仍是第一时由下方"斜率补盲区"处理
+                sw = True; np_pos = _gated_pos; streak = 0; reason = "斜率离场"
             elif _nz_gated:
                 pass  # 纳指放量门: 今日不主动切进纳指 (止损/急跌出口已在上面按 _gated_pos 处理)
             elif cfg.rank_sticky > 0 and int(np.sum(ms > ms[pos])) + 1 <= cfg.rank_sticky:
@@ -1834,6 +1895,10 @@ def compute_signals(
                 and hl_exit(pos, t)):
             # N-32 结构离场补盲区: 持仓仍是动量第一(无处可切)时, 距N日高点回撤/破前低 → 清到空仓
             sw = True; np_pos = -1; streak = 0; reason = "结构离场"
+        elif (cfg.slope_gate_mode == "exit" and pos >= 0 and t >= crash_held_until
+                and _slope_gate_hit(pos, t)):
+            # N-40 斜率离场补盲区: 持仓仍是动量第一(无处可切)时, 斜率转负 → 清到空仓
+            sw = True; np_pos = -1; streak = 0; reason = "斜率离场"
         elif (cfg.abs_stop_loss and pos >= 0 and pnl <= stop_line(pos, t)
                 and t >= crash_held_until):
             # 绝对止损: 持仓仍是动量第一(ti==pos)时的盲区补丁——
@@ -1888,6 +1953,9 @@ def compute_signals(
             if (reason in ("止损", "绝对止损") and old_pos >= 0
                     and cfg.stop_cooldown > 0):
                 stop_block_until[old_pos] = t + cfg.stop_cooldown
+            if (reason == "斜率离场" and old_pos >= 0
+                    and cfg.slope_gate_cooldown > 0):
+                slope_block_until[old_pos] = t + cfg.slope_gate_cooldown
             actions.append((t, old_pos, np_pos, reason))
 
         nav_log.append(nav)
