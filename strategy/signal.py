@@ -346,6 +346,10 @@ class SignalConfig:
     stop_cooldown: int = 0         # 止损/绝对止损后N天禁止买回同一标的 (0=关闭, 恐慌抄底豁免; 按标的独立计时)
     sh_cash_cooldown: int = 3      # 上证空仓后再入场冷却天数 (0=关闭, 恐慌抄底豁免; 2026-08 起默认3天)
     sh_cash_exempt: bool = False   # 上证空仓仅对A股标的生效 (豁免纳指/黄金)
+    # N-44 上证空仓豁免范围细化 (默认 "" = 沿用 SH_CASH_EXEMPT_NAMES 的固定集合):
+    # 逗号分隔的标的名, 仅这些标的在上证空仓时不被清出 (如 "黄金" 只豁免黄金)。
+    # 需配合 sh_cash_exempt=True 才生效。
+    sh_cash_exempt_names: str = ""
     multi_mom: bool = False        # 多周期动量: 排名分 = 3×mom10+2×mom20+1×mom60
     fip_tiebreak: bool = False     # FIP动量质量: 动量差<min_gap时选上涨路径更平滑者
     abs_stop_loss: bool = True     # 绝对止损: 持仓仍动量第一且pnl<=stop_loss时清到空仓(补盲区, 2026-08 起默认开)
@@ -988,6 +992,9 @@ def compute_signals(
     sat_pos = -1; sat_alloc = 0.0; sat_hs = -1      # 分档切换组合: 卫星腿(-1=无), 权重与入场日
     actions = []
     nav_log = []
+    # N-44: 上证空仓的豁免标的集合。sh_cash_exempt_names 非空时按它, 否则沿用固定集合。
+    _exempt_set = ({x.strip() for x in cfg.sh_cash_exempt_names.split(",") if x.strip()}
+                   if cfg.sh_cash_exempt_names.strip() else SH_CASH_EXEMPT_NAMES)
     _extra_names = {x.strip() for x in cfg.bull_pool_extra.split(",") if x.strip()}
     extra_idx = np.array([i for i, nm in enumerate(etf_names) if nm in _extra_names], dtype=int)
     bull_rule = cfg.bull_pool_rule if extra_idx.size else ""
@@ -1592,7 +1599,7 @@ def compute_signals(
         if cfg.sh_cash and cfg.sh_cash_exempt:
             # 豁免模式: 上证只与非豁免(A股)标的的动量比较
             ne = [ms[i] for i, nm in enumerate(etf_names)
-                  if nm not in SH_CASH_EXEMPT_NAMES and vm[i]]
+                  if nm not in _exempt_set and vm[i]]
             sc = (sh_mom[t] > max(ne)) if ne else False
         elif cfg.sh_cash:
             _ms_c = ms.copy()
@@ -1677,12 +1684,12 @@ def compute_signals(
                     _why = "结构离场"
                 sw = True; streak = 0; reason = _why
         elif sc:
-            if cfg.sh_cash_exempt and pos >= 0 and etf_names[pos] in SH_CASH_EXEMPT_NAMES:
+            if cfg.sh_cash_exempt and pos >= 0 and etf_names[pos] in _exempt_set:
                 pass  # 持有豁免标的(纳指/黄金), 上证空仓不出场
             elif cfg.sh_cash_exempt and pos == -1:
                 # 空仓时仍可按正常入场规则买豁免标的
                 ex_idx = [i for i, nm in enumerate(etf_names)
-                          if nm in SH_CASH_EXEMPT_NAMES and vm[i]]
+                          if nm in _exempt_set and vm[i]]
                 bought = False
                 if ex_idx:
                     if cfg.accel_reentry_gate:

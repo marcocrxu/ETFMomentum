@@ -83,6 +83,7 @@ def run_backtest(params):
         sh_cash = bool(sh_cash_raw)
     cfg = SignalConfig(
         sh_cash=sh_cash, sh_cash_exempt=sh_cash_exempt, method=params.get("method", "sigma"),
+        sh_cash_exempt_names=str(params.get("sh_cash_exempt_names", "") or ""),
         accel_sigma=float(params.get("accel_sigma", 3.0)),
         accel_enabled=params.get("accel_on", True),
         crash_sigma=float(params.get("crash_sigma", -2.5)),
