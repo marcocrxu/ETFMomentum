@@ -41,3 +41,4 @@ web/vendor/
 # 审计临时工作目录 (不提交)
 .peer_work/
 .tmpwork/
+pytest-of-*/ 

@@ -29,3 +29,5 @@
 {"ts": "2026-10-28 14:51:07", "date": "2026-10-28", "signal": "HOLD", "target": null, "reason": "", "sim_position": "纳指", "actual_position_after": "创业", "nz_mix_active": true}
 {"ts": "2026-10-29 14:51:08", "date": "2026-10-29", "signal": "HOLD", "target": null, "reason": "", "sim_position": "纳指", "actual_position_after": "创业", "nz_mix_active": true}
 {"ts": "2026-10-30 14:51:06", "date": "2026-10-30", "signal": "HOLD", "target": null, "reason": "", "sim_position": "纳指", "actual_position_after": "纳指", "nz_mix_active": true}
+{"ts": "2026-11-02 14:51:09", "date": "2026-11-02", "signal": "CASH", "target": null, "reason": "上证空仓", "sim_position": "", "actual_position_after": null, "nz_mix_active": true}
+{"ts": "2026-11-03 14:51:10", "date": "2026-11-03", "signal": "HOLD", "target": null, "reason": "上证空仓", "sim_position": "", "actual_position_after": null, "nz_mix_active": true}
